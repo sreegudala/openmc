@@ -172,6 +172,18 @@ public:
   // present.
   int energyout_filter_ {C_NONE};
   int delayedgroup_filter_ {C_NONE};
+  int complex_filter_ {C_NONE}; //!< position of a ComplexPartFilter
+
+  //! Sum over realizations of Re * Im for each (filter bin, score), stored at
+  //! both the real and imaginary bin index. Allocated only when the tally has
+  //! a ComplexPartFilter.
+  tensor::Tensor<double> results_cross_;
+
+  //! Weight component (0 real, 1 imaginary) for a flattened filter index
+  int complex_component(int64_t filter_index) const
+  {
+    return (filter_index / strides_[complex_filter_]) % 2;
+  }
 
   vector<Trigger> triggers_;
 

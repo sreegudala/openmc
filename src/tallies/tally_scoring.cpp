@@ -1632,7 +1632,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
       tally.estimator_ == TallyEstimator::COLLISION) {
     if (settings::survival_biasing) {
       // Determine weight that was absorbed
-      wgt_absorb = p.wgt_last() * p.macro_xs().absorption / p.macro_xs().total;
+      wgt_absorb = p.wgt_last_tally() * p.macro_xs().absorption / p.macro_xs().total;
 
       // Then we either are alive and had a scatter (and so g changed),
       // or are dead and g did not change
@@ -1690,7 +1690,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
         // All events score to a flux bin. We actually use a collision estimator
         // in place of an analog one since there is no way to count 'events'
         // exactly for the flux
-        score = flux * p.wgt_last() / p.macro_xs().total;
+        score = flux * p.wgt_last_tally() / p.macro_xs().total;
       } else {
         score = flux;
       }
@@ -1700,7 +1700,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
       if (tally.estimator_ == TallyEstimator::ANALOG) {
         // All events will score to the total reaction rate. We can just use
         // use the weight of the particle entering the collision as the score
-        score = flux * p.wgt_last();
+        score = flux * p.wgt_last_tally();
         if (i_nuclide >= 0) {
           score *= atom_density *
                    nuc_xs.get_xs(MgxsType::TOTAL, p_g, nuc_t, nuc_a) /
@@ -1711,7 +1711,9 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
           score = atom_density * flux *
                   nuc_xs.get_xs(MgxsType::TOTAL, p_g, nuc_t, nuc_a);
         } else {
-          score = p.macro_xs().total * flux;
+          // Exclude the noise-mode pseudo cross section from the physical
+          // total reaction rate (it is zero outside noise mode)
+          score = (p.macro_xs().total - p.macro_xs().noise) * flux;
         }
       }
       break;
@@ -1722,7 +1724,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
         // All events score to an inverse velocity bin. We actually use a
         // collision estimator in place of an analog one since there is no way
         // to count 'events' exactly for the inverse velocity
-        score = flux * p.wgt_last();
+        score = flux * p.wgt_last_tally();
         if (i_nuclide >= 0) {
           score *=
             nuc_xs.get_xs(MgxsType::INVERSE_VELOCITY, p_g, nuc_t, nuc_a) /
@@ -1750,7 +1752,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
           continue;
         // Since only scattering events make it here, again we can use the
         // weight entering the collision as the estimator for the reaction rate
-        score = (p.wgt_last() - wgt_absorb) * flux;
+        score = (p.wgt_last_tally() - wgt_absorb) * flux;
         if (i_nuclide >= 0) {
           score *= atom_density *
                    nuc_xs.get_xs(MgxsType::SCATTER_FMU, p.g_last(), &p.g(),
@@ -1778,7 +1780,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
         // For scattering production, we need to use the pre-collision weight
         // times the multiplicity as the estimate for the number of neutrons
         // exiting a reaction with neutrons in the exit channel
-        score = (p.wgt_last() - wgt_absorb) * flux;
+        score = (p.wgt_last_tally() - wgt_absorb) * flux;
         // Since we transport based on material data, the angle selected
         // was not selected from the f(mu) for the nuclide.  Therefore
         // adjust the score by the actual probability for that nuclide.
@@ -1812,7 +1814,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
             continue;
           // All fission and absorption events will contribute here, so we
           // can just use the particle's weight entering the collision
-          score = p.wgt_last() * flux;
+          score = p.wgt_last_tally() * flux;
         }
         if (i_nuclide >= 0) {
           score *= atom_density *
@@ -1843,7 +1845,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
           // All fission events will contribute, so again we can use particle's
           // weight entering the collision as the estimate for the fission
           // reaction rate
-          score = p.wgt_last() * flux;
+          score = p.wgt_last_tally() * flux;
         }
         if (i_nuclide >= 0) {
           score *= atom_density *
@@ -2271,7 +2273,7 @@ void score_general_mg(Particle& p, int i_tally, int start_index,
           // All fission events will contribute, so again we can use particle's
           // weight entering the collision as the estimate for the fission
           // reaction rate
-          score = p.wgt_last() * flux;
+          score = p.wgt_last_tally() * flux;
         }
         if (i_nuclide >= 0) {
           score *= atom_density *
@@ -2376,6 +2378,10 @@ void score_analog_tally_mg(Particle& p)
       auto filter_index = filter_iter.index_;
       auto filter_weight = filter_iter.weight_;
 
+      // Select the weight component for complex-part tallies
+      if (tally.complex_filter_ != C_NONE)
+        p.tally_component() = tally.complex_component(filter_index);
+
       // Loop over nuclide bins.
       for (auto i = 0; i < tally.nuclides_.size(); ++i) {
         auto i_nuclide = tally.nuclides_[i];
@@ -2406,10 +2412,11 @@ void score_analog_tally_mg(Particle& p)
   // Reset all the filter matches for the next tally event.
   for (auto& match : p.filter_matches())
     match.bins_present_ = false;
+  p.tally_component() = 0;
 }
 
 void score_tracklength_tally_general(
-  Particle& p, double flux, const vector<int>& tallies)
+  Particle& p, double flux, double flux_im, const vector<int>& tallies)
 {
   // Set 'none' value for log union grid index
   int i_log_union = C_NONE;
@@ -2429,6 +2436,14 @@ void score_tracklength_tally_general(
     for (; filter_iter != end; ++filter_iter) {
       auto filter_index = filter_iter.index_;
       auto filter_weight = filter_iter.weight_;
+
+      // Select the weight component for complex-part tallies
+      double flux_c = flux;
+      if (tally.complex_filter_ != C_NONE) {
+        p.tally_component() = tally.complex_component(filter_index);
+        if (p.tally_component() == 1)
+          flux_c = flux_im;
+      }
 
       // Loop over nuclide bins.
       for (auto i = 0; i < tally.nuclides_.size(); ++i) {
@@ -2461,10 +2476,10 @@ void score_tracklength_tally_general(
         // TODO: consider replacing this "if" with pointers or templates
         if (settings::run_CE) {
           score_general_ce_nonanalog(p, i_tally, i * tally.scores_.size(),
-            filter_index, filter_weight, i_nuclide, atom_density, flux);
+            filter_index, filter_weight, i_nuclide, atom_density, flux_c);
         } else {
           score_general_mg(p, i_tally, i * tally.scores_.size(), filter_index,
-            filter_weight, i_nuclide, atom_density, flux);
+            filter_weight, i_nuclide, atom_density, flux_c);
         }
       }
     }
@@ -2480,6 +2495,7 @@ void score_tracklength_tally_general(
   // Reset all the filter matches for the next tally event.
   for (auto& match : p.filter_matches())
     match.bins_present_ = false;
+  p.tally_component() = 0;
 }
 
 void score_timed_tracklength_tally(Particle& p, double total_distance)
@@ -2514,9 +2530,10 @@ void score_timed_tracklength_tally(Particle& p, double total_distance)
 
     // Determine the tracklength estimate of the flux
     double flux = p.wgt() * distance;
+    double flux_im = p.wgt_im() * distance;
 
     score_tracklength_tally_general(
-      p, flux, model::active_timed_tracklength_tallies);
+      p, flux, flux_im, model::active_timed_tracklength_tallies);
     distance_traveled += distance;
   }
 
@@ -2529,16 +2546,20 @@ void score_tracklength_tally(Particle& p, double distance)
 
   // Determine the tracklength estimate of the flux
   double flux = p.wgt() * distance;
+  double flux_im = p.wgt_im() * distance;
 
-  score_tracklength_tally_general(p, flux, model::active_tracklength_tallies);
+  score_tracklength_tally_general(
+    p, flux, flux_im, model::active_tracklength_tallies);
 }
 
 void score_collision_tally(Particle& p)
 {
   // Determine the collision estimate of the flux
   double flux = 0.0;
+  double flux_im = 0.0;
   if (p.type().is_neutron() || p.type().is_photon()) {
     flux = p.wgt_last() / p.macro_xs().total;
+    flux_im = p.wgt_im_last() / p.macro_xs().total;
   }
 
   // Set 'none value for log union grid index
@@ -2559,6 +2580,14 @@ void score_collision_tally(Particle& p)
     for (; filter_iter != end; ++filter_iter) {
       auto filter_index = filter_iter.index_;
       auto filter_weight = filter_iter.weight_;
+
+      // Select the weight component for complex-part tallies
+      double flux_c = flux;
+      if (tally.complex_filter_ != C_NONE) {
+        p.tally_component() = tally.complex_component(filter_index);
+        if (p.tally_component() == 1)
+          flux_c = flux_im;
+      }
 
       // Loop over nuclide bins.
       for (auto i = 0; i < tally.nuclides_.size(); ++i) {
@@ -2591,10 +2620,10 @@ void score_collision_tally(Particle& p)
         // TODO: consider replacing this "if" with pointers or templates
         if (settings::run_CE) {
           score_general_ce_nonanalog(p, i_tally, i * tally.scores_.size(),
-            filter_index, filter_weight, i_nuclide, atom_density, flux);
+            filter_index, filter_weight, i_nuclide, atom_density, flux_c);
         } else {
           score_general_mg(p, i_tally, i * tally.scores_.size(), filter_index,
-            filter_weight, i_nuclide, atom_density, flux);
+            filter_weight, i_nuclide, atom_density, flux_c);
         }
       }
     }
@@ -2610,6 +2639,7 @@ void score_collision_tally(Particle& p)
   // Reset all the filter matches for the next tally event.
   for (auto& match : p.filter_matches())
     match.bins_present_ = false;
+  p.tally_component() = 0;
 }
 
 void score_meshsurface_tally(Particle& p, const vector<int>& tallies)

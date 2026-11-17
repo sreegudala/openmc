@@ -51,14 +51,17 @@ public:
   //! \param u Direction of the secondary particle
   //! \param E Energy of the secondary particle in [eV]
   //! \param type Particle type
+  //! \param wgt_im Imaginary part of the weight (noise mode only)
   //! \return Whether a secondary particle was created
-  bool create_secondary(double wgt, Direction u, double E, ParticleType type);
+  bool create_secondary(double wgt, Direction u, double E, ParticleType type,
+    double wgt_im = 0.0);
 
   //! split a particle
   //
   //! creates a new particle with weight wgt
   //! \param wgt Weight of the new particle
-  void split(double wgt);
+  //! \param wgt_im Imaginary part of the weight (noise mode only)
+  void split(double wgt, double wgt_im = 0.0);
 
   //! initialize from a source site
   //

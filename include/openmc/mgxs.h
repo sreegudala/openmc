@@ -118,6 +118,15 @@ public:
   //! @return The number of temperature data points for this MGXS
   inline int n_temperature_points() { return kTs.size(); }
 
+  //! \brief Whether inverse-velocity data were provided (all entries > 0).
+  //!
+  //! Missing inverse-velocity data are read as zeros and silently replaced
+  //! by a default in get_xs; noise mode requires the actual data.
+  bool has_inverse_velocity() const;
+
+  //! \brief Number of delayed neutron groups in this data set
+  int n_delayed_groups() const { return num_delayed_groups; }
+
   //! \brief Provides a cross section value given certain parameters
   //!
   //! @param xstype Type of cross section requested, according to the

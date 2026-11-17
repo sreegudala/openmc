@@ -52,6 +52,13 @@ class SourceBase(ABC):
         Indicator of source type.
     strength : float
         Strength of the source
+    phase : float
+        Phase in [rad] of the complex weight of sampled particles. Only valid
+        in frequency-domain noise mode (:attr:`openmc.Settings.noise`); a
+        sampled particle of real weight :math:`w` is given the complex weight
+        :math:`w e^{i\theta}`.
+
+        .. versionadded:: 0.16.1
     constraints : dict
         Constraints on sampled source particles. Valid keys include
         'domain_type', 'domain_ids', 'time_bounds', 'energy_bounds',
@@ -66,10 +73,20 @@ class SourceBase(ABC):
     ):
         self.strength = strength
         self.constraints = constraints
+        self.phase = 0.0
 
     @property
     def strength(self):
         return self._strength
+
+    @property
+    def phase(self) -> float:
+        return getattr(self, "_phase", 0.0)
+
+    @phase.setter
+    def phase(self, phase: float):
+        cv.check_type('source phase', phase, Real)
+        self._phase = float(phase)
 
     @strength.setter
     def strength(self, strength):
@@ -140,6 +157,8 @@ class SourceBase(ABC):
         element.set("type", self.type)
         if self.strength is not None:
             element.set("strength", str(self.strength))
+        if getattr(self, '_phase', 0.0) != 0.0:
+            element.set("phase", str(self.phase))
         self.populate_xml_element(element)
         constraints = self.constraints
         if constraints:
@@ -185,6 +204,14 @@ class SourceBase(ABC):
             Source generated from XML element
 
         """
+        source = cls._from_xml_element_dispatch(elem, meshes)
+        phase = get_text(elem, 'phase')
+        if phase is not None:
+            source.phase = float(phase)
+        return source
+
+    @staticmethod
+    def _from_xml_element_dispatch(elem, meshes=None):
         source_type = get_text(elem, 'type')
 
         if source_type is None:
@@ -1977,6 +2004,10 @@ class SourceParticle:
         Surface ID where particle is at, if any.
     particle : ParticleType or str or int
         Type of the particle (type, name, or PDG number)
+    wgt_im : float
+        Imaginary part of the weight (frequency-domain noise mode only)
+
+        .. versionadded:: 0.16.1
 
     """
 
@@ -1989,7 +2020,8 @@ class SourceParticle:
         wgt: float = 1.0,
         delayed_group: int = 0,
         surf_id: int = 0,
-        particle: ParticleType | str | int = ParticleType.NEUTRON
+        particle: ParticleType | str | int = ParticleType.NEUTRON,
+        wgt_im: float = 0.0
     ):
 
         self.r = tuple(r)
@@ -1997,6 +2029,7 @@ class SourceParticle:
         self.E = float(E)
         self.time = float(time)
         self.wgt = float(wgt)
+        self.wgt_im = float(wgt_im)
         self.delayed_group = delayed_group
         self.surf_id = surf_id
         self.particle = particle
@@ -2081,9 +2114,15 @@ class ParticleList(list):
         if filetype != b'source':
             raise ValueError(f'File {filename} is not a source file')
 
+        has_wgt_im = 'wgt_im' in arr.dtype.names
         source_particles = [
-            SourceParticle(*params, ParticleType(particle))
-            for *params, particle in arr
+            SourceParticle(
+                r=tuple(row['r']), u=tuple(row['u']), E=row['E'],
+                time=row['time'], wgt=row['wgt'],
+                delayed_group=row['delayed_group'], surf_id=row['surf_id'],
+                particle=ParticleType(int(row['particle'])),
+                wgt_im=row['wgt_im'] if has_wgt_im else 0.0)
+            for row in arr
         ]
         return cls(source_particles)
 
@@ -2191,21 +2230,33 @@ class ParticleList(list):
         openmc.FileSource
 
         """
-        # Create compound datatype for source particles
+        # Create compound datatype for source particles. The imaginary weight
+        # is written only when some particle has one (noise mode files).
+        has_wgt_im = any(getattr(s, 'wgt_im', 0.0) != 0.0 for s in self)
         pos_dtype = np.dtype([('x', '<f8'), ('y', '<f8'), ('z', '<f8')])
-        source_dtype = np.dtype([
+        fields = [
             ('r', pos_dtype),
             ('u', pos_dtype),
             ('E', '<f8'),
             ('time', '<f8'),
             ('wgt', '<f8'),
+        ]
+        if has_wgt_im:
+            fields.append(('wgt_im', '<f8'))
+        fields += [
             ('delayed_group', '<i4'),
             ('surf_id', '<i4'),
             ('particle', '<i4'),
-        ])
+        ]
+        source_dtype = np.dtype(fields)
 
         # Create array of source particles
-        arr = np.array([s.to_tuple() for s in self], dtype=source_dtype)
+        if has_wgt_im:
+            rows = [(s.r, s.u, s.E, s.time, s.wgt, s.wgt_im, s.delayed_group,
+                     s.surf_id, s.particle.pdg_number) for s in self]
+        else:
+            rows = [s.to_tuple() for s in self]
+        arr = np.array(rows, dtype=source_dtype)
 
         # Write array to file
         kwargs.setdefault('mode', 'w')

@@ -1,6 +1,8 @@
 #ifndef OPENMC_PARTICLE_DATA_H
 #define OPENMC_PARTICLE_DATA_H
 
+#include <cmath>
+
 #include "openmc/array.h"
 #include "openmc/constants.h"
 #include "openmc/particle_type.h"
@@ -44,6 +46,7 @@ struct SourceSite {
   double E;
   double time {0.0};
   double wgt {1.0};
+  double wgt_im {0.0}; //!< Imaginary part of weight (noise mode only)
   int delayed_group {0};
   int surf_id {SURFACE_NONE};
   ParticleType particle;
@@ -99,6 +102,7 @@ struct TrackStateHistory {
 struct NuBank {
   double E;          //!< particle energy
   double wgt;        //!< particle weight
+  double wgt_im {0.0}; //!< imaginary part of particle weight (noise mode)
   int delayed_group; //!< particle delayed group
 };
 
@@ -208,6 +212,7 @@ struct MacroXS {
   double fission;     //!< macroscopic fission xs
   double nu_fission;  //!< macroscopic production xs
   double photon_prod; //!< macroscopic photon production xs
+  double noise {0.0}; //!< noise-mode pseudo cross section eta*omega/v (MG)
 
   // Photon cross sections
   double coherent;        //!< macroscopic coherent xs
@@ -513,6 +518,12 @@ private:
   double time_last_ {0.0};
   double wgt_last_ {1.0};
 
+  // Imaginary part of the weight; non-zero only in frequency-domain noise
+  // mode, where the particle weight is the complex number wgt_ + i wgt_im_
+  double wgt_im_ {0.0};
+  double wgt_im_last_ {0.0};
+  int tally_component_ {0}; //!< 0 = real, 1 = imaginary (complex tallies)
+
   bool fission_ {false};
   TallyEvent event_;
   int event_nuclide_;
@@ -631,8 +642,42 @@ public:
   double& wgt_last() { return wgt_last_; }
   const double& wgt_last() const { return wgt_last_; }
 
+  // Imaginary part of the weight (frequency-domain noise mode)
+  double& wgt_im() { return wgt_im_; }
+  double wgt_im() const { return wgt_im_; }
+  double& wgt_im_last() { return wgt_im_last_; }
+  double wgt_im_last() const { return wgt_im_last_; }
+
+  //! Modulus of the (possibly complex) weight
+  double wgt_abs() const
+  {
+    return wgt_im_ == 0.0 ? std::abs(wgt_) : std::hypot(wgt_, wgt_im_);
+  }
+
+  //! Multiply both parts of the weight by a real factor
+  void scale_wgt(double f)
+  {
+    wgt_ *= f;
+    wgt_im_ *= f;
+  }
+
+  //! Kill the particle by zeroing both parts of its weight
+  void kill()
+  {
+    wgt_ = 0.0;
+    wgt_im_ = 0.0;
+  }
+
+  //! Weight component being tallied (see ComplexPartFilter)
+  int& tally_component() { return tally_component_; }
+  double wgt_tally() const { return tally_component_ == 0 ? wgt_ : wgt_im_; }
+  double wgt_last_tally() const
+  {
+    return tally_component_ == 0 ? wgt_last_ : wgt_im_last_;
+  }
+
   // Whether particle is alive
-  bool alive() const { return wgt_ != 0.0; }
+  bool alive() const { return wgt_ != 0.0 || wgt_im_ != 0.0; }
 
   // Polar scattering angle after a collision
   double& mu() { return mu_; }

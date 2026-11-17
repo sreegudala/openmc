@@ -19,6 +19,7 @@
 #include "openmc/mesh.h"
 #include "openmc/message_passing.h"
 #include "openmc/mgxs_interface.h"
+#include "openmc/noise.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
 #include "openmc/particle_type.h"
@@ -265,6 +266,11 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
       }
     }
 
+    // Noise-mode fission-generation statistics
+    if (settings::noise_mode) {
+      noise::write_statepoint(file_id);
+    }
+
     if (settings::reduce_tallies) {
       // Write global tallies
       write_dataset(file_id, "global_tallies", simulation::global_tallies);
@@ -285,6 +291,10 @@ extern "C" int openmc_statepoint_write(const char* filename, bool* write_source)
           auto& results = tally->results_;
           write_tally_results(tally_group, results.shape(0), results.shape(1),
             results.shape(2), results.data());
+          if (tally->results_cross_.size() != 0) {
+            // Sum over realizations of Re * Im for complex-part tallies
+            write_dataset(tally_group, "results_cross", tally->results_cross_);
+          }
           close_group(tally_group);
         }
       } else {
@@ -561,7 +571,7 @@ extern "C" int openmc_statepoint_load(const char* filename)
   return 0;
 }
 
-hid_t h5banktype(bool memory)
+hid_t h5banktype(bool memory, bool with_wgt_im)
 {
   // Create compound type for position
   hid_t postype = H5Tcreate(H5T_COMPOUND, sizeof(struct Position));
@@ -576,20 +586,34 @@ hid_t h5banktype(bool memory)
   // - openmc/statepoint.py
   // - docs/source/io_formats/statepoint.rst
   // - docs/source/io_formats/source.rst
-  auto n = sizeof(SourceSite);
-  if (!memory)
-    n = 2 * sizeof(struct Position) + 3 * sizeof(double) + 3 * sizeof(int);
+  //
+  // The in-memory type uses the offsets of SourceSite, while the file type is
+  // packed. The imaginary weight "wgt_im" is only present in files written in
+  // frequency-domain noise mode so that the default format is unchanged.
+  size_t n = sizeof(SourceSite);
+  if (!memory) {
+    n = 2 * sizeof(struct Position) + (with_wgt_im ? 4 : 3) * sizeof(double) +
+        3 * sizeof(int);
+  }
   hid_t banktype = H5Tcreate(H5T_COMPOUND, n);
-  H5Tinsert(banktype, "r", HOFFSET(SourceSite, r), postype);
-  H5Tinsert(banktype, "u", HOFFSET(SourceSite, u), postype);
-  H5Tinsert(banktype, "E", HOFFSET(SourceSite, E), H5T_NATIVE_DOUBLE);
-  H5Tinsert(banktype, "time", HOFFSET(SourceSite, time), H5T_NATIVE_DOUBLE);
-  H5Tinsert(banktype, "wgt", HOFFSET(SourceSite, wgt), H5T_NATIVE_DOUBLE);
-  H5Tinsert(banktype, "delayed_group", HOFFSET(SourceSite, delayed_group),
-    H5T_NATIVE_INT);
-  H5Tinsert(banktype, "surf_id", HOFFSET(SourceSite, surf_id), H5T_NATIVE_INT);
-  H5Tinsert(
-    banktype, "particle", HOFFSET(SourceSite, particle), H5T_NATIVE_INT);
+  size_t file_offset = 0;
+  auto insert = [&](const char* name, size_t mem_offset, hid_t type) {
+    size_t offset = memory ? mem_offset : file_offset;
+    H5Tinsert(banktype, name, offset, type);
+    file_offset += H5Tget_size(type);
+  };
+  insert("r", HOFFSET(SourceSite, r), postype);
+  insert("u", HOFFSET(SourceSite, u), postype);
+  insert("E", HOFFSET(SourceSite, E), H5T_NATIVE_DOUBLE);
+  insert("time", HOFFSET(SourceSite, time), H5T_NATIVE_DOUBLE);
+  insert("wgt", HOFFSET(SourceSite, wgt), H5T_NATIVE_DOUBLE);
+  if (with_wgt_im) {
+    insert("wgt_im", HOFFSET(SourceSite, wgt_im), H5T_NATIVE_DOUBLE);
+  }
+  insert(
+    "delayed_group", HOFFSET(SourceSite, delayed_group), H5T_NATIVE_INT);
+  insert("surf_id", HOFFSET(SourceSite, surf_id), H5T_NATIVE_INT);
+  insert("particle", HOFFSET(SourceSite, particle), H5T_NATIVE_INT);
 
   H5Tclose(postype);
   return banktype;
@@ -660,8 +684,8 @@ void write_h5_source_point(const char* filename, span<SourceSite> source_bank,
 void write_source_bank(hid_t group_id, span<SourceSite> source_bank,
   const vector<int64_t>& bank_index)
 {
-  hid_t membanktype = h5banktype(true);
-  hid_t filebanktype = h5banktype(false);
+  hid_t membanktype = h5banktype(true, settings::noise_mode);
+  hid_t filebanktype = h5banktype(false, settings::noise_mode);
 
 #ifdef OPENMC_MPI
   write_bank_dataset("source_bank", group_id, source_bank, bank_index,
@@ -703,13 +727,16 @@ void read_source_bank(
     }
   }
 
-  hid_t banktype = h5banktype(true);
-
   // Open the dataset
   hid_t dset = H5Dopen(group_id, "source_bank", H5P_DEFAULT);
 
-  // Make sure number of members matches
+  // Files written in noise mode carry an imaginary weight; accept either
+  // layout. When it is absent the imaginary weight stays zero.
   hid_t dtype = H5Dget_type(dset);
+  bool has_wgt_im = H5Tget_member_index(dtype, "wgt_im") >= 0;
+  hid_t banktype = h5banktype(true, has_wgt_im);
+
+  // Make sure number of members matches
   auto file_member_names = dtype_member_names(dtype);
   auto bank_member_names = dtype_member_names(banktype);
   if (file_member_names != bank_member_names) {

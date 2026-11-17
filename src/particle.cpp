@@ -84,7 +84,7 @@ double Particle::mass() const
 }
 
 bool Particle::create_secondary(
-  double wgt, Direction u, double E, ParticleType type)
+  double wgt, Direction u, double E, ParticleType type, double wgt_im)
 {
   // If energy is below cutoff for this particle, don't create secondary
   // particle
@@ -102,6 +102,7 @@ bool Particle::create_secondary(
   SourceSite bank;
   bank.particle = type;
   bank.wgt = wgt;
+  bank.wgt_im = wgt_im;
   bank.r = r();
   bank.u = u;
   bank.E = settings::run_CE ? E : g();
@@ -119,11 +120,12 @@ bool Particle::create_secondary(
   return true;
 }
 
-void Particle::split(double wgt)
+void Particle::split(double wgt, double wgt_im)
 {
   SourceSite bank;
   bank.particle = type();
   bank.wgt = wgt;
+  bank.wgt_im = wgt_im;
   bank.r = r();
   bank.u = u();
   bank.E = settings::run_CE ? E() : g();
@@ -168,6 +170,8 @@ void Particle::from_source(const SourceSite* src)
   type() = src->particle;
   wgt() = src->wgt;
   wgt_last() = src->wgt;
+  wgt_im() = src->wgt_im;
+  wgt_im_last() = src->wgt_im;
   r() = src->r;
   u() = src->u;
   r_born() = src->r;
@@ -209,6 +213,7 @@ void Particle::event_calculate_xs()
 
   // Store pre-collision particle properties
   wgt_last() = wgt();
+  wgt_im_last() = wgt_im();
   E_last() = E();
   u_last() = u();
   r_last() = r();
@@ -326,7 +331,7 @@ void Particle::event_advance()
 
   // Set particle weight to zero if it hit the time boundary
   if (distance == distance_cutoff) {
-    wgt() = 0.0;
+    kill();
   }
 
   // Clear surface component if distance is long enough
@@ -550,7 +555,7 @@ void Particle::event_check_limit_and_revive()
   if (n_event() == settings::max_particle_events) {
     warning("Particle " + std::to_string(id()) +
             " underwent maximum number of events.");
-    wgt() = 0.0;
+    kill();
   }
 
   // In non-shared-secondary mode, revive from local secondary bank
@@ -752,7 +757,7 @@ void Particle::cross_vacuum_bc(const Surface& surf)
   keff_tally_leakage() += wgt();
 
   // Kill the particle
-  wgt() = 0.0;
+  kill();
 
   // Display message
   if (settings::verbosity >= 10 || trace()) {
@@ -874,7 +879,7 @@ void Particle::mark_as_lost(const char* message)
     write_restart();
   }
   // Increment number of lost particles
-  wgt() = 0.0;
+  kill();
 #pragma omp atomic
   simulation::n_lost_particles += 1;
 
@@ -1063,6 +1068,7 @@ void add_surf_source_to_bank(Particle& p, const Surface& surf)
   site.E = p.E();
   site.time = p.time();
   site.wgt = p.wgt();
+  site.wgt_im = p.wgt_im();
   site.delayed_group = p.delayed_group();
   site.surf_id = surf.id_;
   site.particle = p.type();

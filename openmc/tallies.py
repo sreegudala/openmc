@@ -175,6 +175,7 @@ class Tally(IDManagerMixin):
 
         self._sum = None
         self._sum_sq = None
+        self._sum_cross = None
         self._sum_third = None
         self._sum_fourth = None
         self._mean = None
@@ -467,6 +468,11 @@ class Tally(IDManagerMixin):
             self._sum = sum_
             self._sum_sq = sum_sq
 
+            # Sum of Re * Im products for tallies with a ComplexPartFilter
+            if 'results_cross' in group:
+                self._sum_cross = np.reshape(
+                    group['results_cross'][()], self.shape)
+
             if self._higher_moments:
                 # Extract additional Tally data when higher moments enabled
                 sum_third = data[:, :, 2]
@@ -494,6 +500,14 @@ class Tally(IDManagerMixin):
 
         # Indicate that Tally results have been read
         self._results_read = True
+
+    @property
+    @ensure_results
+    def sum_cross(self):
+        """Sum over realizations of the product of the real and imaginary
+        parts, for tallies with a :class:`openmc.ComplexPartFilter` (None
+        otherwise). Stored at both the real and imaginary bin."""
+        return self._sum_cross
 
     @property
     @ensure_results

@@ -265,6 +265,35 @@ class Settings:
         The 'nuclides' list indicates what nuclides the method should be applied
         to. In its absence, the method will be applied to all nuclides with 0 K
         elastic scattering data present.
+    noise : dict
+        Options for frequency-domain neutron noise mode (multigroup fixed
+        source only). Particles carry complex weights; use
+        :class:`openmc.ComplexPartFilter` to tally real and imaginary parts.
+        Acceptable keys are:
+
+        :frequency:
+            Frequency of the noise problem in [Hz] (default 0)
+        :eta:
+            Collision-based pseudo-absorption factor, :math:`\\Sigma_\\omega =
+            \\eta\\omega/v` (default 1)
+        :keff:
+            Static multiplication factor dividing all fission production
+            (default 1)
+        :max_generations:
+            Maximum number of fission generations per batch (default 100000)
+        :growth_limit:
+            Abort a batch when the sum of :math:`|w|` over the fission bank
+            exceeds this factor times its first-generation value, which
+            signals a divergent game (default 10)
+        :cancellation_mesh:
+            :class:`openmc.MeshBase` on which fission-bank weights are
+            averaged (complex weight cancellation) at every fission
+            generation. Off when absent.
+        :cancellation_group:
+            Whether cancellation bins also distinguish the outgoing energy
+            group of the fission site (default True)
+
+        .. versionadded:: 0.16.1
     run_mode : {'eigenvalue', 'fixed source', 'plot', 'volume', 'particle restart'}
         The type of calculation to perform (default is 'eigenvalue')
     seed : int
@@ -504,6 +533,7 @@ class Settings:
             WeightWindowGenerator, 'weight window generators')
         self._weight_windows_on = None
         self._shared_secondary_bank = None
+        self._noise = {}
         self._weight_windows_file = None
         self._weight_window_checkpoints = {}
         self._max_history_splits = None
@@ -1345,6 +1375,37 @@ class Settings:
         self._shared_secondary_bank = value
 
     @property
+    def noise(self) -> dict:
+        return self._noise
+
+    @noise.setter
+    def noise(self, noise: dict):
+        cv.check_type('noise', noise, Mapping)
+        for key, value in noise.items():
+            if key == 'frequency':
+                cv.check_type('noise frequency', value, Real)
+                cv.check_greater_than('noise frequency', value, 0.0, True)
+            elif key == 'eta':
+                cv.check_type('noise eta', value, Real)
+                cv.check_greater_than('noise eta', value, 0.0)
+            elif key == 'keff':
+                cv.check_type('noise keff', value, Real)
+                cv.check_greater_than('noise keff', value, 0.0)
+            elif key == 'max_generations':
+                cv.check_type('noise max_generations', value, Integral)
+                cv.check_greater_than('noise max_generations', value, 0)
+            elif key == 'growth_limit':
+                cv.check_type('noise growth_limit', value, Real)
+                cv.check_greater_than('noise growth_limit', value, 1.0)
+            elif key == 'cancellation_mesh':
+                cv.check_type('noise cancellation_mesh', value, MeshBase)
+            elif key == 'cancellation_group':
+                cv.check_type('noise cancellation_group', value, bool)
+            else:
+                raise ValueError(f'Unknown noise key: {key}')
+        self._noise = dict(noise)
+
+    @property
     def weight_window_checkpoints(self) -> dict:
         return self._weight_window_checkpoints
 
@@ -1965,6 +2026,25 @@ class Settings:
             elem = ET.SubElement(root, "weight_windows_on")
             elem.text = str(self._weight_windows_on).lower()
 
+    def _create_noise_subelement(self, root, mesh_memo=None):
+        if self._noise:
+            element = ET.SubElement(root, "noise")
+            for key, value in self._noise.items():
+                subelement = ET.SubElement(element, key)
+                if key == 'cancellation_mesh':
+                    subelement.text = str(value.id)
+                    if mesh_memo is not None and value.id in mesh_memo:
+                        continue
+                    path = f"./mesh[@id='{value.id}']"
+                    if root.find(path) is None:
+                        root.append(value.to_xml_element())
+                        if mesh_memo is not None:
+                            mesh_memo.add(value.id)
+                elif isinstance(value, bool):
+                    subelement.text = str(value).lower()
+                else:
+                    subelement.text = str(value)
+
     def _create_shared_secondary_bank_subelement(self, root):
         if self._shared_secondary_bank is not None:
             elem = ET.SubElement(root, "shared_secondary_bank")
@@ -2476,6 +2556,26 @@ class Settings:
         if text is not None:
             self.weight_windows_on = text in ('true', '1')
 
+    def _noise_from_xml_element(self, root, meshes=None):
+        elem = root.find('noise')
+        if elem is not None:
+            noise = {}
+            for child in elem:
+                if child.tag == 'max_generations':
+                    noise[child.tag] = int(child.text)
+                elif child.tag == 'cancellation_mesh':
+                    mesh_id = int(child.text)
+                    if meshes is None or mesh_id not in meshes:
+                        raise ValueError(
+                            f'Could not locate mesh with ID "{mesh_id}"')
+                    noise[child.tag] = meshes[mesh_id]
+                elif child.tag == 'cancellation_group':
+                    noise[child.tag] = child.text.strip().lower() in (
+                        'true', '1')
+                else:
+                    noise[child.tag] = float(child.text)
+            self.noise = noise
+
     def _shared_secondary_bank_from_xml_element(self, root):
         text = get_text(root, 'shared_secondary_bank')
         if text is not None:
@@ -2653,6 +2753,7 @@ class Settings:
         self._create_weight_windows_subelement(element, mesh_memo)
         self._create_weight_windows_on_subelement(element)
         self._create_shared_secondary_bank_subelement(element)
+        self._create_noise_subelement(element, mesh_memo)
         self._create_weight_window_generators_subelement(element, mesh_memo)
         self._create_weight_windows_file_element(element)
         self._create_weight_window_checkpoints_subelement(element)
@@ -2771,6 +2872,7 @@ class Settings:
         settings._weight_windows_from_xml_element(elem, meshes)
         settings._weight_windows_on_from_xml_element(elem)
         settings._shared_secondary_bank_from_xml_element(elem)
+        settings._noise_from_xml_element(elem, meshes)
         settings._weight_windows_file_from_xml_element(elem)
         settings._weight_window_generators_from_xml_element(elem, meshes)
         settings._weight_window_checkpoints_from_xml_element(elem)

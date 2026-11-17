@@ -85,6 +85,14 @@ bool ufs_on {false};
 bool urr_ptables_on {true};
 bool use_decay_photons {false};
 bool use_shared_secondary_bank {false};
+bool noise_mode {false};
+double noise_omega {0.0};
+double noise_eta {1.0};
+double noise_keff {1.0};
+int noise_max_generations {100000};
+double noise_growth_limit {10.0};
+int noise_cancellation_mesh {C_NONE};
+bool noise_cancellation_group {true};
 bool weight_windows_on {false};
 bool weight_window_checkpoint_surface {false};
 bool weight_window_checkpoint_collision {true};
@@ -1368,6 +1376,88 @@ void read_settings_xml(pugi::xml_node root)
       settings::use_shared_secondary_bank = true;
     }
   }
+
+  // Frequency-domain neutron noise settings
+  if (check_for_node(root, "noise")) {
+    read_noise_settings(root.child("noise"));
+  } else {
+    for (const auto& src : model::external_sources) {
+      if (src->phase() != 0.0) {
+        fatal_error("A source phase requires noise mode (<noise> element).");
+      }
+    }
+  }
+}
+
+void read_noise_settings(pugi::xml_node node)
+{
+  using namespace settings;
+  noise_mode = true;
+  if (check_for_node(node, "frequency")) {
+    double f = std::stod(get_node_value(node, "frequency"));
+    if (f < 0.0)
+      fatal_error("Noise frequency must be non-negative.");
+    noise_omega = 2.0 * PI * f;
+  }
+  if (check_for_node(node, "eta")) {
+    noise_eta = std::stod(get_node_value(node, "eta"));
+    if (noise_eta <= 0.0)
+      fatal_error("Noise eta must be positive.");
+  }
+  if (check_for_node(node, "keff")) {
+    noise_keff = std::stod(get_node_value(node, "keff"));
+    if (noise_keff <= 0.0)
+      fatal_error("Noise keff must be positive.");
+  }
+  if (check_for_node(node, "growth_limit")) {
+    noise_growth_limit = std::stod(get_node_value(node, "growth_limit"));
+    if (noise_growth_limit <= 1.0)
+      fatal_error("Noise growth_limit must be greater than 1.");
+  }
+  if (check_for_node(node, "cancellation_mesh")) {
+    int id = std::stoi(get_node_value(node, "cancellation_mesh"));
+    auto it = model::mesh_map.find(id);
+    if (it == model::mesh_map.end()) {
+      fatal_error(
+        fmt::format("Mesh {} specified for noise cancellation does not exist.",
+          id));
+    }
+    noise_cancellation_mesh = it->second;
+  }
+  if (check_for_node(node, "cancellation_group")) {
+    noise_cancellation_group = get_node_value_bool(node, "cancellation_group");
+  }
+  if (check_for_node(node, "max_generations")) {
+    noise_max_generations = std::stoi(get_node_value(node, "max_generations"));
+    if (noise_max_generations < 1)
+      fatal_error("Noise max_generations must be at least 1.");
+  }
+
+  // Validation: the noise solver is multigroup fixed-source only
+  if (run_CE) {
+    fatal_error("Noise mode requires multigroup energy mode.");
+  }
+  if (run_mode != RunMode::FIXED_SOURCE) {
+    fatal_error("Noise mode requires fixed-source run mode.");
+  }
+  if (solver_type != SolverType::MONTE_CARLO) {
+    fatal_error("Noise mode requires the Monte Carlo solver.");
+  }
+  for (double t : time_cutoff) {
+    if (t < INFTY) {
+      fatal_error("Time cutoffs cannot be used in noise mode.");
+    }
+  }
+  if (weight_windows_on) {
+    fatal_error("Weight windows are not supported in noise mode.");
+  }
+  if (!reduce_tallies) {
+    fatal_error("Tally reduction cannot be disabled in noise mode.");
+  }
+  if (use_shared_secondary_bank) {
+    fatal_error("The shared secondary bank cannot be used in noise mode; "
+                "noise mode runs its own fission-generation loop.");
+  }
 }
 
 void free_memory_settings()
@@ -1379,6 +1469,14 @@ void free_memory_settings()
   settings::track_identifiers.clear();
   settings::ifp_delayed_group_on = false;
   settings::ifp_lifetime_on = false;
+  settings::noise_mode = false;
+  settings::noise_omega = 0.0;
+  settings::noise_eta = 1.0;
+  settings::noise_keff = 1.0;
+  settings::noise_max_generations = 100000;
+  settings::noise_cancellation_mesh = C_NONE;
+  settings::noise_cancellation_group = true;
+  settings::noise_growth_limit = 10.0;
 }
 
 //==============================================================================

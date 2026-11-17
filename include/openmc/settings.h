@@ -90,6 +90,16 @@ extern bool ufs_on;                  //!< uniform fission site method on?
 extern bool urr_ptables_on;          //!< use unresolved resonance prob. tables?
 extern bool use_decay_photons;       //!< use decay photons for D1S
 extern bool use_shared_secondary_bank; //!< Use shared bank for secondaries
+
+// Frequency-domain neutron noise (multigroup, fixed source)
+extern bool noise_mode;      //!< frequency-domain noise mode on?
+extern double noise_omega;   //!< angular frequency [rad/s]
+extern double noise_eta;     //!< collision-based pseudo-absorption factor
+extern double noise_keff;    //!< static k_eff dividing fission production
+extern int noise_max_generations; //!< cap on fission generations per batch
+extern double noise_growth_limit; //!< abort when sum|w| grows by this factor
+extern int noise_cancellation_mesh;   //!< mesh index for weight cancellation
+extern bool noise_cancellation_group; //!< also bin cancellation on group?
 extern bool weight_windows_on;         //!< are weight windows are enabled?
 extern bool weight_window_checkpoint_surface;   //!< enable weight window check
                                                 //!< upon surface crossing?
@@ -205,6 +215,9 @@ void read_settings_xml();
 //! Read settings from XML node
 //! \param[in] root XML node for <settings>
 void read_settings_xml(pugi::xml_node root);
+
+//! Read the <noise> element of settings.xml (frequency-domain noise mode)
+void read_noise_settings(pugi::xml_node node);
 
 void free_memory_settings();
 

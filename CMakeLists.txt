@@ -363,6 +363,7 @@ list(APPEND libopenmc_SOURCES
   src/mgxs_interface.cpp
   src/ncrystal_interface.cpp
   src/ncrystal_load.cpp
+  src/noise.cpp
   src/nuclide.cpp
   src/openmc.cpp
   src/output.cpp
@@ -412,6 +413,7 @@ list(APPEND libopenmc_SOURCES
   src/tallies/filter_cellborn.cpp
   src/tallies/filter_cellfrom.cpp
   src/tallies/filter_collision.cpp
+  src/tallies/filter_complex_part.cpp
   src/tallies/filter_delayedgroup.cpp
   src/tallies/filter_distribcell.cpp
   src/tallies/filter_energy.cpp

@@ -40,11 +40,14 @@ public:
     if (!has_albedo())
       return;
     double initial_wgt = p.wgt();
+    double initial_wgt_im = p.wgt_im();
     // Treat the lost weight fraction as leakage, similar to VacuumBC.
     // This ensures the lost weight is tallied properly.
     p.wgt() *= (1.0 - albedo_);
+    p.wgt_im() *= (1.0 - albedo_);
     p.cross_vacuum_bc(surf);
     p.wgt() = initial_wgt * albedo_;
+    p.wgt_im() = initial_wgt_im * albedo_;
   };
 
   //! Return a string classification of this BC.

@@ -13,6 +13,7 @@
 #include "openmc/math_functions.h"
 #include "openmc/message_passing.h"
 #include "openmc/mgxs_interface.h"
+#include "openmc/noise.h"
 #include "openmc/particle.h"
 #include "openmc/physics_common.h"
 #include "openmc/random_lcg.h"
@@ -52,6 +53,11 @@ void collision_mg(Particle& p)
 
 void sample_reaction(Particle& p)
 {
+  if (settings::noise_mode) {
+    noise::sample_reaction(p);
+    return;
+  }
+
   // Create fission bank sites. Note that while a fission reaction is sampled,
   // it never actually "happens", i.e. the weight of the particle does not
   // change when sampling fission sites. The following block handles all
@@ -83,8 +89,16 @@ void sample_reaction(Particle& p)
 
 void scatter(Particle& p)
 {
-  data::mg.macro_xs_[p.material()].sample_scatter(p.g_last(), p.g(), p.mu(),
-    p.wgt(), p.current_seed(), p.mg_xs_cache().t, p.mg_xs_cache().a);
+  if (p.wgt_im() == 0.0) {
+    data::mg.macro_xs_[p.material()].sample_scatter(p.g_last(), p.g(), p.mu(),
+      p.wgt(), p.current_seed(), p.mg_xs_cache().t, p.mg_xs_cache().a);
+  } else {
+    // Complex weight: apply the scattering multiplicity to both parts
+    double mult = 1.0;
+    data::mg.macro_xs_[p.material()].sample_scatter(p.g_last(), p.g(), p.mu(),
+      mult, p.current_seed(), p.mg_xs_cache().t, p.mg_xs_cache().a);
+    p.scale_wgt(mult);
+  }
 
   // Rotate the angle
   p.u() = rotate_angle(p.u(), p.mu(), nullptr, p.current_seed());
@@ -98,6 +112,11 @@ void scatter(Particle& p)
 
 void create_fission_sites(Particle& p)
 {
+  if (p.wgt_im() != 0.0) {
+    fatal_error("Fission with a complex particle weight is not supported "
+                "outside the noise fission-generation loop.");
+  }
+
   // If uniform fission source weighting is turned on, we increase or decrease
   // the expected number of fission sites produced
   double weight = settings::ufs_on ? ufs_get_weight(p) : 1.0;
@@ -249,6 +268,9 @@ void absorption(Particle& p)
 
     // Adjust weight of particle by the probability of absorption
     p.wgt() -= wgt_absorb;
+    if (p.wgt_im() != 0.0) {
+      p.wgt_im() -= p.wgt_im() * p.macro_xs().absorption / p.macro_xs().total;
+    }
 
     // Score implicit absorpion estimate of keff
     p.keff_tally_absorption() +=
@@ -257,7 +279,7 @@ void absorption(Particle& p)
     if (p.macro_xs().absorption > prn(p.current_seed()) * p.macro_xs().total) {
       p.keff_tally_absorption() +=
         p.wgt() * p.macro_xs().nu_fission / p.macro_xs().absorption;
-      p.wgt() = 0.0;
+      p.kill();
       p.event() = TallyEvent::ABSORB;
     }
   }

@@ -79,7 +79,7 @@ void collision(Particle& p)
   // Kill particle if energy falls below cutoff
   int type = p.type().transport_index();
   if (type != C_NONE && p.E() < settings::energy_cutoff[type]) {
-    p.wgt() = 0.0;
+    p.kill();
   }
 
   // Display information about collision
@@ -300,7 +300,7 @@ void sample_photon_reaction(Particle& p)
   int photon = ParticleType::photon().transport_index();
   if (p.E() < settings::energy_cutoff[photon]) {
     p.E() = 0.0;
-    p.wgt() = 0.0;
+    p.kill();
     return;
   }
 
@@ -437,7 +437,7 @@ void sample_photon_reaction(Particle& p)
         }
         p.event() = TallyEvent::ABSORB;
         p.event_mt() = 533 + shell.index_subshell;
-        p.wgt() = 0.0;
+        p.kill();
         p.E() = 0.0;
         return;
       }
@@ -462,7 +462,7 @@ void sample_photon_reaction(Particle& p)
     process_charged_secondary(p, u, E_positron, ParticleType::positron());
     p.event() = TallyEvent::ABSORB;
     p.event_mt() = PAIR_PROD;
-    p.wgt() = 0.0;
+    p.kill();
     p.E() = 0.0;
   }
 }
@@ -505,7 +505,7 @@ void sample_electron_reaction(Particle& p)
   }
 
   p.E() = 0.0;
-  p.wgt() = 0.0;
+  p.kill();
   p.event() = TallyEvent::ABSORB;
 }
 
@@ -525,7 +525,7 @@ void sample_positron_reaction(Particle& p)
   p.create_secondary(p.wgt(), -u, MASS_ELECTRON_EV, ParticleType::photon());
 
   p.E() = 0.0;
-  p.wgt() = 0.0;
+  p.kill();
   p.event() = TallyEvent::ABSORB;
 }
 
@@ -700,7 +700,7 @@ void absorption(Particle& p, int i_nuclide)
                                      p.neutron_xs(i_nuclide).absorption;
       }
 
-      p.wgt() = 0.0;
+      p.kill();
       p.event() = TallyEvent::ABSORB;
       if (!p.fission()) {
         p.event_mt() = N_DISAPPEAR;

@@ -78,6 +78,9 @@ public:
   // Methods that can be overridden
   virtual double strength() const { return strength_; }
 
+  //! Phase [rad] applied to the complex weight of sampled sites (noise mode)
+  double phase() const { return phase_; }
+
   //! Sample a source site and apply constraints
   //
   //! \param[inout] seed Pseudorandom seed pointer
@@ -112,6 +115,7 @@ protected:
 
   // Data members
   double strength_ {1.0};                  //!< Source strength
+  double phase_ {0.0}; //!< Phase of the complex source weight [rad]
   std::unordered_set<int32_t> domain_ids_; //!< Domains to reject from
   DomainType domain_type_;                 //!< Domain type for rejection
   std::pair<double, double> time_bounds_ {-std::numeric_limits<double>::max(),

@@ -467,6 +467,7 @@ void Tally::set_filters(span<Filter*> filters)
   // Clear old data.
   filters_.clear();
   strides_.clear();
+  complex_filter_ = C_NONE;
 
   // Copy in the given filter indices.
   auto n = filters.size();
@@ -489,6 +490,8 @@ void Tally::add_filter(Filter* filter)
     energyout_filter_ = filters_.size();
   } else if (filter->type() == FilterType::DELAYED_GROUP) {
     delayedgroup_filter_ = filters_.size();
+  } else if (filter->type() == FilterType::COMPLEX_PART) {
+    complex_filter_ = filters_.size();
   }
   filters_.push_back(filter_idx);
 }
@@ -829,6 +832,16 @@ void Tally::init_triggers(pugi::xml_node node)
 void Tally::init_results()
 {
   int n_scores = scores_.size() * nuclides_.size();
+  if (complex_filter_ != C_NONE) {
+    if (estimator_ == TallyEstimator::ANALOG) {
+      fatal_error(fmt::format("Tally {} has a complex-part filter and needs an "
+                              "analog estimator, which is not supported.",
+        id_));
+    }
+    results_cross_ = tensor::Tensor<double>(
+      {static_cast<size_t>(n_filter_bins_), static_cast<size_t>(n_scores)});
+    results_cross_.fill(0.0);
+  }
   if (higher_moments_) {
     results_ = tensor::Tensor<double>({static_cast<size_t>(n_filter_bins_),
       static_cast<size_t>(n_scores), size_t {5}});
@@ -843,6 +856,9 @@ void Tally::reset()
   n_realizations_ = 0;
   if (results_.size() != 0) {
     results_.fill(0.0);
+  }
+  if (results_cross_.size() != 0) {
+    results_cross_.fill(0.0);
   }
 }
 
@@ -871,6 +887,23 @@ void Tally::accumulate()
 
     if (settings::solver_type == SolverType::RANDOM_RAY) {
       norm = 1.0;
+    }
+
+    // Accumulate the Re * Im cross product for complex-part tallies before
+    // the VALUE entries are cleared
+    if (complex_filter_ != C_NONE) {
+      int64_t stride = strides_[complex_filter_];
+#pragma omp parallel for
+      for (int64_t i = 0; i < results_.shape(0); ++i) {
+        if ((i / stride) % 2 != 0)
+          continue;
+        for (int j = 0; j < results_.shape(1); ++j) {
+          double re = results_(i, j, TallyResult::VALUE) * norm;
+          double im = results_(i + stride, j, TallyResult::VALUE) * norm;
+          results_cross_(i, j) += re * im;
+          results_cross_(i + stride, j) += re * im;
+        }
+      }
     }
 
     // Accumulate each result

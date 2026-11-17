@@ -28,6 +28,7 @@ _FILTER_TYPES = (
     'spatiallegendre', 'sphericalharmonics', 'zernike', 'zernikeradial', 'particle',
     'particleproduction', 'cellinstance', 'collision', 'time', 'parentnuclide',
     'weight', 'meshborn', 'meshsurface', 'meshmaterial', 'reaction',
+    'complexpart',
 )
 
 def _mesh_current_names(mesh):
@@ -1385,6 +1386,60 @@ class CollisionFilter(Filter):
             # Values should be integers
             cv.check_type('filter value', x, Integral)
             cv.check_greater_than('filter value', x, 0, equality=True)
+
+
+class ComplexPartFilter(Filter):
+    """Splits scores into the real and imaginary parts of the particle weight.
+
+    Used in frequency-domain neutron noise mode (see
+    :attr:`openmc.Settings.noise`), where each particle carries a complex
+    weight. The filter always has two bins, ``'real'`` and ``'imag'``. For
+    tallies with this filter the statepoint also stores the per-realization
+    sum of the product of the two parts, which gives the covariance needed
+    for the amplitude and phase uncertainties (see
+    :func:`openmc.noise.complex_tally_stats`).
+
+    Parameters
+    ----------
+    bins : iterable of str, optional
+        Ignored; the bins are always ``('real', 'imag')``.
+    filter_id : int
+        Unique identifier for the filter
+
+    Attributes
+    ----------
+    bins : numpy.ndarray
+        The bins ``['real', 'imag']``
+    id : int
+        Unique identifier for the filter
+    num_bins : int
+        The number of filter bins (always 2)
+
+    """
+
+    def __init__(self, bins=None, filter_id=None):
+        self.bins = bins
+        self.id = filter_id
+
+    @Filter.bins.setter
+    def bins(self, bins):
+        if bins is not None:
+            bins = [b.decode() if isinstance(b, bytes) else str(b)
+                    for b in bins]
+            if list(bins) != ['real', 'imag']:
+                raise ValueError("ComplexPartFilter bins must be "
+                                 "['real', 'imag']")
+        self._bins = np.array(['real', 'imag'], dtype=str)
+
+    @classmethod
+    def from_hdf5(cls, group, **kwargs):
+        filter_id = int(group.name.split('/')[-1].lstrip('filter '))
+        return cls(filter_id=filter_id)
+
+    @classmethod
+    def from_xml_element(cls, elem, **kwargs):
+        filter_id = int(get_text(elem, "id"))
+        return cls(filter_id=filter_id)
 
 
 class ReactionFilter(Filter):

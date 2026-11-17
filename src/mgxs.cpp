@@ -611,6 +611,29 @@ void Mgxs::calculate_xs(Particle& p)
   p.macro_xs().nu_fission =
     fissionable ? xs[temperature].nu_fission(angle, p.g()) * p.density_mult()
                 : 0.;
+
+  // Frequency-domain noise mode, collision-based scheme (Rouchon et al.):
+  // flights are sampled with the real total Sigma_t + eta * omega / v and the
+  // extra pseudo-collision is handled as a "copy" reaction in noise.cpp.
+  if (settings::noise_mode) {
+    double sigma_w = settings::noise_eta * settings::noise_omega *
+                     xs[temperature].inverse_velocity(angle, p.g());
+    p.macro_xs().noise = sigma_w;
+    p.macro_xs().total += sigma_w;
+  }
+}
+
+bool Mgxs::has_inverse_velocity() const
+{
+  for (const auto& x : xs) {
+    if (x.inverse_velocity.size() == 0)
+      return false;
+    for (auto v : x.inverse_velocity) {
+      if (!(v > 0.0))
+        return false;
+    }
+  }
+  return true;
 }
 
 //==============================================================================

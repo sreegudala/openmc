@@ -26,6 +26,7 @@ class _SourceSite(Structure):
                 ('E', c_double),
                 ('time', c_double),
                 ('wgt', c_double),
+                ('wgt_im', c_double),
                 ('delayed_group', c_int),
                 ('surf_id', c_int),
                 ('particle', c_int32),

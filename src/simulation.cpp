@@ -11,6 +11,7 @@
 #include "openmc/ifp.h"
 #include "openmc/material.h"
 #include "openmc/message_passing.h"
+#include "openmc/noise.h"
 #include "openmc/nuclide.h"
 #include "openmc/openmp_interface.h"
 #include "openmc/output.h"
@@ -90,6 +91,11 @@ int openmc_simulation_init()
 
   // Determine how much work each process should do
   calculate_work(settings::n_particles);
+
+  // Frequency-domain noise mode checks and precomputation
+  if (settings::noise_mode) {
+    noise::initialize();
+  }
 
   // Allocate source, fission and surface source banks.
   allocate_banks();
@@ -273,7 +279,9 @@ int openmc_next_batch(int* status)
     simulation::time_transport.start();
 
     // Transport loop
-    if (settings::event_based) {
+    if (settings::noise_mode) {
+      noise::transport();
+    } else if (settings::event_based) {
       if (settings::use_shared_secondary_bank) {
         transport_event_based_shared_secondary();
       } else {

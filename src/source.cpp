@@ -89,6 +89,12 @@ Source::Source(pugi::xml_node node)
     }
   }
 
+  // Phase of the complex source weight (frequency-domain noise mode). A
+  // sampled site of real weight w gets the complex weight w exp(i phase).
+  if (check_for_node(node, "phase")) {
+    phase_ = std::stod(get_node_value(node, "phase"));
+  }
+
   // Check for additional defined constraints
   read_constraints(node);
 }
@@ -235,6 +241,7 @@ SourceSite Source::sample_with_constraints(uint64_t* seed) const
         if (rejection_strategy_ == RejectionStrategy::KILL) {
           accepted = true;
           site.wgt = 0.0;
+          site.wgt_im = 0.0;
         }
       }
     }
@@ -247,6 +254,16 @@ SourceSite Source::sample_with_constraints(uint64_t* seed) const
   }
   ++source_n_accept;
   check_rejection_fraction(source_n_reject, source_n_accept);
+
+  // Rotate the complex weight by the source phase
+  if (phase_ != 0.0) {
+    double c = std::cos(phase_);
+    double sn = std::sin(phase_);
+    double re = site.wgt * c - site.wgt_im * sn;
+    double im = site.wgt * sn + site.wgt_im * c;
+    site.wgt = re;
+    site.wgt_im = im;
+  }
 
   return site;
 }
@@ -1849,8 +1866,10 @@ SourceSite sample_external_source(uint64_t* seed)
   // source i, which is (strength_i / total_strength) / (1 / n)
   if (n_sources > 1 && settings::uniform_source_sampling) {
     double total_strength = model::external_sources_probability.integral();
-    site.wgt *=
+    double f =
       model::external_sources[i]->strength() * n_sources / total_strength;
+    site.wgt *= f;
+    site.wgt_im *= f;
   }
 
   // If running in MG, convert site.E to group

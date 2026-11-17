@@ -18,7 +18,7 @@ from .mesh import _get_mesh
 
 __all__ = [
     'Filter', 'AzimuthalFilter', 'CellFilter', 'CellbornFilter', 'CellfromFilter',
-    'CellInstanceFilter', 'CollisionFilter', 'DistribcellFilter', 'DelayedGroupFilter',
+    'CellInstanceFilter', 'CollisionFilter', 'ComplexPartFilter', 'DistribcellFilter', 'DelayedGroupFilter',
     'EnergyFilter', 'EnergyoutFilter', 'EnergyFunctionFilter', 'LegendreFilter',
     'MaterialFilter', 'MaterialFromFilter', 'MeshFilter', 'MeshBornFilter',
     'MeshMaterialFilter', 'MeshSurfaceFilter', 'MuFilter', 'MuSurfaceFilter',
@@ -232,6 +232,10 @@ class EnergyFilter(Filter):
 
 class CollisionFilter(Filter):
     filter_type = 'collision'
+
+
+class ComplexPartFilter(Filter):
+    filter_type = 'complexpart'
 
 
 class EnergyoutFilter(EnergyFilter):
@@ -716,6 +720,7 @@ _FILTER_TYPE_MAP = {
     'cellfrom': CellfromFilter,
     'cellinstance': CellInstanceFilter,
     'collision': CollisionFilter,
+    'complexpart': ComplexPartFilter,
     'delayedgroup': DelayedGroupFilter,
     'distribcell': DistribcellFilter,
     'energy': EnergyFilter,
