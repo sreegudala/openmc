@@ -284,7 +284,7 @@ class Settings:
         :growth_limit:
             Abort a batch when the sum of :math:`|w|` over the fission bank
             exceeds this factor times its first-generation value, which
-            signals a divergent game (default 10)
+            signals a divergent game (default 100)
         :cancellation_mesh:
             :class:`openmc.MeshBase` on which fission-bank weights are
             averaged (complex weight cancellation) at every fission

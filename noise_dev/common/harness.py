@@ -9,8 +9,12 @@ phase_tol (degrees), evaluated only where the replica sigma is below one
 third of that tolerance.
 """
 
+import os
+import shlex
 import shutil
+import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -18,19 +22,63 @@ import openmc
 import openmc.noise
 
 
-def run_replicas(make_model, workdir, n_rep=20, threads=12, base_seed=1,
-                 tally_names=("tl",), keep=False, extra=None):
+def _env_int(name, default):
+    value = os.environ.get(name)
+    return int(value) if value else default
+
+
+# Execution settings, overridable from the environment (e.g. in a SLURM job):
+#   NOISE_THREADS      OpenMP threads per OpenMC process (default 12)
+#   NOISE_JOBS         replicas run concurrently (default 1)
+#   NOISE_OPENMC_CMD   command used to launch OpenMC (default "openmc")
+THREADS = _env_int("NOISE_THREADS", 12)
+JOBS = _env_int("NOISE_JOBS", 1)
+OPENMC_CMD = shlex.split(os.environ.get("NOISE_OPENMC_CMD", "openmc"))
+
+
+def run_openmc(cwd, threads=None):
+    """Run OpenMC in `cwd` (which holds model.xml); return the wall time.
+
+    Output goes to cwd/openmc.out. Thread binding variables are removed so
+    that concurrent processes on one node are not pinned to the same cores.
+    """
+    cwd = Path(cwd)
+    env = dict(os.environ)
+    for var in ("OMP_PROC_BIND", "OMP_PLACES"):
+        env.pop(var, None)
+    cmd = OPENMC_CMD + ["-s", str(threads or THREADS)]
+    t0 = time.time()
+    with open(cwd / "openmc.out", "w") as fh:
+        res = subprocess.run(cmd, cwd=cwd, stdout=fh,
+                             stderr=subprocess.STDOUT, env=env)
+    elapsed = time.time() - t0
+    if res.returncode != 0:
+        tail = (cwd / "openmc.out").read_text().splitlines()[-20:]
+        raise RuntimeError(f"OpenMC failed in {cwd} (code {res.returncode}):\n"
+                           + "\n".join(tail))
+    return elapsed
+
+
+def last_statepoint(d):
+    sps = sorted(Path(d).glob("statepoint.*.h5"),
+                 key=lambda q: int(q.name.split(".")[1]))
+    if not sps:
+        raise FileNotFoundError(f"no statepoint in {d}")
+    return sps[-1]
+
+
+def run_replicas(make_model, workdir, n_rep=20, threads=None, base_seed=1,
+                 tally_names=("tl",), keep=False, extra=None, jobs=None):
     """Run `n_rep` independent replicas (different seeds).
 
-    make_model() must return a fresh openmc.Model. Returns dict with
-    complex replica means per tally name, shape (R, ...), the batch standard
-    deviations of the last replica, wall times and the last statepoint path.
+    make_model() must return a fresh openmc.Model. Up to `jobs` replicas
+    (default NOISE_JOBS) run concurrently with `threads` OpenMP threads each
+    (default NOISE_THREADS). Returns dict with complex replica means per
+    tally name, shape (R, ...), the batch standard deviations of the last
+    replica, the wall time of each replica and the `extra` results.
     """
     workdir = Path(workdir)
-    out = {name: [] for name in tally_names}
-    batch_std = {}
-    times = []
-    extras = []
+    dirs = []
     for r in range(n_rep):
         d = workdir / f"rep{r:02d}"
         if d.exists():
@@ -38,10 +86,17 @@ def run_replicas(make_model, workdir, n_rep=20, threads=12, base_seed=1,
         d.mkdir(parents=True)
         model = make_model()
         model.settings.seed = base_seed + 7919 * r
-        t0 = time.time()
-        sp_path = model.run(cwd=d, threads=threads, output=False)
-        times.append(time.time() - t0)
-        with openmc.StatePoint(sp_path) as sp:
+        model.export_to_model_xml(d / "model.xml")
+        dirs.append(d)
+    n_jobs = max(1, min(jobs or JOBS, n_rep))
+    with ThreadPoolExecutor(max_workers=n_jobs) as pool:
+        times = list(pool.map(lambda d: run_openmc(d, threads), dirs))
+
+    out = {name: [] for name in tally_names}
+    batch_std = {}
+    extras = []
+    for r, d in enumerate(dirs):
+        with openmc.StatePoint(last_statepoint(d)) as sp:
             for name in tally_names:
                 st = openmc.noise.complex_tally_stats(sp.get_tally(name=name))
                 out[name].append(st["value"].squeeze())

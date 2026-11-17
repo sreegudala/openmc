@@ -90,7 +90,7 @@ double noise_omega {0.0};
 double noise_eta {1.0};
 double noise_keff {1.0};
 int noise_max_generations {100000};
-double noise_growth_limit {10.0};
+double noise_growth_limit {100.0};
 int noise_cancellation_mesh {C_NONE};
 bool noise_cancellation_group {true};
 bool weight_windows_on {false};
@@ -1476,7 +1476,7 @@ void free_memory_settings()
   settings::noise_max_generations = 100000;
   settings::noise_cancellation_mesh = C_NONE;
   settings::noise_cancellation_group = true;
-  settings::noise_growth_limit = 10.0;
+  settings::noise_growth_limit = 100.0;
 }
 
 //==============================================================================

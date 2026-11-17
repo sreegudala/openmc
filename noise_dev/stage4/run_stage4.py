@@ -35,6 +35,7 @@ sys.path.insert(0, str(HERE.parent / "common"))
 sys.path.insert(0, str(HERE.parent / "reference"))
 
 from build import box_source, make_library, slab_model, x_mesh  # noqa
+import harness  # noqa
 from harness import fmt_info, fom, run_replicas, std_criterion, summarize  # noqa
 from noise_common import Material  # noqa
 from ref_diff1d import slab_noise  # noqa
@@ -86,7 +87,7 @@ def openmc_keff(lib, regions, x0, particles=200000, batches=300, inactive=50):
         "lib_4a") else 2, transverse=10.0)]
     d = WORK / ("keff_" + lib.stem)
     d.mkdir(parents=True, exist_ok=True)
-    sp = model.run(cwd=d, threads=12, output=False)
+    sp = model.run(cwd=d, threads=harness.THREADS, output=False)
     with openmc.StatePoint(sp) as s:
         return s.keff.n, s.keff.s
 

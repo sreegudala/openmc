@@ -34,6 +34,7 @@ sys.path.insert(0, str(HERE.parent / "common"))
 sys.path.insert(0, str(HERE.parent / "reference"))
 
 from build import box_source, make_library, slab_model  # noqa
+import harness  # noqa
 from harness import fmt_info, fom, run_replicas, std_criterion, summarize  # noqa
 from noise_common import Material  # noqa
 from ref_g0 import (KEEPIN_U235_LAMBDA, TRIGA_BETA_K, g0, ktilde_cb,  # noqa
@@ -103,13 +104,14 @@ def gen_ratio(S, nb, start=5, min_batches=None):
 
 
 def run_case(label, mat, lib, f, eta, keff, ref, args, results, src_group=0,
-             strength=1.0, phase=0.0, kt=None):
+             strength=1.0, phase=0.0, kt=None, noise_extra=None):
     extra = lambda sp, d: read_noise(d / f"statepoint.{args.batches}.h5")
     out = run_replicas(lambda: cube_model(mat.G, f, eta, keff, args.particles,
                                           args.batches, lib, src_group,
-                                          strength, phase),
+                                          strength, phase,
+                                          noise_extra=noise_extra),
                        WORK / label, n_rep=args.reps, tally_names=("tl", "col"),
-                       extra=extra)
+                       extra=extra, base_seed=getattr(args, "base_seed", 1))
     entry = {"label": label, "f": f, "eta": eta}
     ok_all = True
     for est in ("tl", "col"):
@@ -163,8 +165,18 @@ def main():
     p.add_argument("--particles", type=int, default=5000)
     p.add_argument("--batches", type=int, default=20)
     p.add_argument("--only", default="3a,3b,3c,3d")
+    p.add_argument("--freqs", default=None,
+                   help="comma-separated subset of F7 for 3a/3b/3d")
+    p.add_argument("--base-seed", type=int, default=1)
+    p.add_argument("--tag", default="",
+                   help="suffix for the work directory and log files")
     args = p.parse_args()
     only = args.only.split(",")
+    global WORK, F7
+    if args.tag:
+        WORK = WORK.parent / f"work_{args.tag}"
+    if args.freqs:
+        F7 = [float(x) for x in args.freqs.split(",")]
     WORK.mkdir(exist_ok=True)
     results, gate = [], []
 
@@ -191,7 +203,8 @@ def main():
         log(f"  1e4 Hz reference {ref[0]:.4e} (published 2.49e-3 - 7.44e-2 i)")
         e = run_case("3a_1e4Hz", mat, lib, f, 20.0, k, ref, args, results,
                      strength=abs(amp), phase=np.angle(amp),
-                     kt=ktilde_cb(w, 20.0, [7e-3], [0.08], Lam))
+                     kt=ktilde_cb(w, 20.0, [7e-3], [0.08], Lam),
+                     noise_extra={"growth_limit": 1000.0})
         gate.append((e["label"], e["ok"]))
 
     if "3b" in only:
@@ -228,8 +241,8 @@ def main():
         import re
         import subprocess
         model.export_to_model_xml(d / "model.xml")
-        res = subprocess.run(["openmc", "-s", "12"], cwd=d, capture_output=True,
-                             text=True)
+        res = subprocess.run(harness.OPENMC_CMD + ["-s", str(harness.THREADS)],
+                             cwd=d, capture_output=True, text=True)
         text = res.stdout + res.stderr
         fired = res.returncode != 0 and "grew by a factor" in text
         msg = [l for l in text.splitlines() if "ERROR" in l or "grew by" in l]
@@ -246,7 +259,7 @@ def main():
         log(f"  3c guard {'fired' if fired else 'DID NOT FIRE'}: {msg[:200]}")
         log(f"  3c measured ratio {ratio:.5f} over {npts} gens vs K~cb "
             f"{kt:.5f}: rel diff {rel:.2e}; T={time.time()-t0:.0f}s")
-        np.save(HERE / "stage3c_sumw.npy", S)
+        np.save(WORK / "stage3c_sumw.npy", S)
         gate.append(("3c guard fires", fired))
         gate.append(("3c ratio > 1 and within 1 % of K~cb",
                      bool(ratio > 1 and rel < 0.01)))
@@ -276,7 +289,7 @@ def main():
     for name, ok in gate:
         if not ok:
             log(f"  FAILED: {name}")
-    tag = args.only.replace(",", "_")
+    tag = args.only.replace(",", "_") + (f"_{args.tag}" if args.tag else "")
     with open(HERE / f"stage3_log_{tag}.md", "w") as fh:
         fh.write("# Stage 3 log\n\n```\n" + "\n".join(LOG) + "\n```\n")
     np.savez(HERE / f"stage3_gen_{tag}.npz",
