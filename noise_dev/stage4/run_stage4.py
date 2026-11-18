@@ -39,7 +39,7 @@ import harness  # noqa
 from harness import fmt_info, fom, run_replicas, std_criterion, summarize  # noqa
 from noise_common import Material  # noqa
 from ref_diff1d import slab_noise  # noqa
-from ref_g0 import g0  # noqa
+from ref_g0 import g0, ktilde_cb  # noqa
 from ref_inf import cortex_fuel  # noqa
 from ref_sn1d import Slab, critical_nu_fission  # noqa
 
@@ -117,7 +117,34 @@ def check(label, vals, ref, mask_frac=0.1):
     mask = np.abs(ref) > mask_frac * np.abs(ref).max()
     ok, info = std_criterion(mean, sre, sim, ref, mask=mask)
     log(f"  {label}: {'PASS' if ok else 'FAIL'} {fmt_info(info)}")
+    correlation_diagnostics(vals, ref, mask)
     return ok, mean, sre, sim, info
+
+
+def correlation_diagnostics(vals, ref, mask):
+    """Informational: separate the common (integrated) fluctuation from the
+    shape. Mesh bins share fission chains, so their z values are strongly
+    correlated and the STD histogram test (which assumes independent
+    entries) can fail for an unbiased estimator. Logs the z of the masked
+    integral, the STD z histogram of the shape v_r / sum(v_r), and the
+    median replica correlation between neighbouring and distant bins."""
+    R = vals.shape[0]
+    v = vals[:, mask]
+    r = ref[mask]
+    T = v.sum(axis=1)
+    zT = [(T.real.mean() - r.sum().real) / (T.real.std(ddof=1) / np.sqrt(R)),
+          (T.imag.mean() - r.sum().imag) / (T.imag.std(ddof=1) / np.sqrt(R))]
+    shape = v / T[:, None]
+    ms, sre, sim, _ = summarize(shape)
+    _, info = std_criterion(ms, sre, sim, r / r.sum(), amp_tol=np.inf,
+                            phase_tol_deg=np.inf)
+    c = np.corrcoef(v.real.T)
+    near = np.median(np.diag(c, 1))
+    far = np.median(c[np.triu_indices_from(c, k=10)])
+    log(f"    integral z: Re {zT[0]:+.2f} Im {zT[1]:+.2f}; shape z: "
+        f"n={info['n']} mean={info['z_mean']:+.2f} std={info['z_std']:.2f} "
+        f"max|z|={info['max_abs_z']:.2f}; replica corr (Re) neighbour "
+        f"{near:.2f}, >=10 bins apart {far:.2f}")
 
 
 def main():
@@ -151,8 +178,12 @@ def main():
         gate.append(("4a OpenMC k consistent with S_N k", abs(z) < 3))
     results_4a = {}
     if "4a" in only or "4c" in only:
+        Lam = 1 / (2.2e5 * NUSF_4A)
         for f in freqs:
-            eta = 1.0
+            # eta = 1 is divergent at 100 Hz (K~cb > 1, as in case 3c)
+            eta = 3.0 if f >= 100 else 1.0
+            kt = ktilde_cb(2 * np.pi * f, eta, [0.0065], [0.0784], Lam)
+            log(f"  4a {f} Hz: eta = {eta}, infinite-medium K~cb = {kt:.5f}")
             ref = bin_to_mesh(sl, refs[f], edges)[:, 0]
             out = run_replicas(lambda: noise_model(
                 lib, regions, -30.0, 1, f, eta, k_sn, (14, 15), 0, 60,
@@ -173,7 +204,8 @@ def main():
                 f"{np.abs(dd[m] / ref[m] - 1).max():.3f}; T="
                 f"{out['times'].sum():.0f}s")
             np.savez(HERE / f"stage4a_{f}Hz.npz", mean=mean, s_re=sre,
-                     s_im=sim, ref=ref, diff=dd, x=0.5 * (edges[1:] + edges[:-1]))
+                     s_im=sim, ref=ref, diff=dd, vals=vals,
+                     times=out["times"], x=0.5 * (edges[1:] + edges[:-1]))
 
     if "ksens" in only and sk_mc is not None:
         f = 0.1
@@ -276,7 +308,8 @@ def main():
             zs.append(info["z"])
             gate.append((f"4b {f} Hz", ok))
             np.savez(HERE / f"stage4b_{f}Hz.npz", mean=mean, s_re=sre,
-                     s_im=sim, ref=ref, edges=e2)
+                     s_im=sim, ref=ref, edges=e2, vals=vals,
+                     times=out["times"])
 
     if zs:
         z = np.concatenate(zs)

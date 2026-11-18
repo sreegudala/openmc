@@ -6,8 +6,8 @@ a time, so one node does a whole case in about the time of one replica.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NOISE_THREADS` | 12 locally, 4 in `noise_job.slurm` | OpenMP threads per OpenMC process |
-| `NOISE_JOBS` | 1 locally, `nproc / NOISE_THREADS` in the job script | replicas run at once (capped at the replica count) |
+| `NOISE_THREADS` | 12 locally; cores / `NOISE_JOBS` in `noise_job.slurm` | OpenMP threads per OpenMC process |
+| `NOISE_JOBS` | 1 locally; 20 in `noise_job.slurm` | replicas run at once (capped at the replica count) |
 | `NOISE_OPENMC_CMD` | `openmc` | launch command, e.g. `"ibrun -n 1 openmc"` if the MPI build refuses to start as a singleton |
 
 No MPI ranks are used: the noise solver's per-generation loop is threaded,

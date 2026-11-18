@@ -4,9 +4,9 @@
 # Submit from noise_dev/ with the driver and its arguments after the script:
 #   sbatch -J s3b_p20k tacc/noise_job.slurm stage3/run_stage3.py --only 3b
 #
-# Replicas run as independent OpenMC processes, NOISE_JOBS at a time with
-# NOISE_THREADS OpenMP threads each (no MPI). Override either with
-#   sbatch --export=ALL,NOISE_THREADS=8 ...
+# Replicas run as independent OpenMC processes, NOISE_JOBS (default 20) at a
+# time with NOISE_THREADS (default cores/NOISE_JOBS) OpenMP threads each, no
+# MPI. Override with e.g.  sbatch --export=ALL,NOISE_THREADS=4 ...
 #SBATCH -p NuclearEnergy
 #SBATCH -A ASC23046
 #SBATCH -N 1
@@ -25,9 +25,15 @@ cd "$SLURM_SUBMIT_DIR"
 # process would bind to the same cores starting at core 0).
 unset OMP_PROC_BIND OMP_PLACES
 
-export NOISE_THREADS=${NOISE_THREADS:-4}
-NCPU=$(nproc)
-export NOISE_JOBS=${NOISE_JOBS:-$(( NCPU / NOISE_THREADS > 0 ? NCPU / NOISE_THREADS : 1 ))}
+# MG runs do not need a depletion chain; parsing it from /corral-secure in
+# every replica is slow and has failed transiently.
+unset OPENMC_CHAIN_FILE
+
+# CPUs on the node. Plain `nproc` honours OMP_NUM_THREADS, which
+# TACC sets to 1. Default: all 20 replicas at once, cores shared evenly.
+NCPU=$(nproc --all)
+export NOISE_JOBS=${NOISE_JOBS:-20}
+export NOISE_THREADS=${NOISE_THREADS:-$(( NCPU / NOISE_JOBS > 0 ? NCPU / NOISE_JOBS : 1 ))}
 
 echo "host:     $(hostname)"
 echo "cpus:     $NCPU   jobs: $NOISE_JOBS   threads/job: $NOISE_THREADS"

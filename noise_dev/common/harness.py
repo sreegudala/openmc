@@ -44,7 +44,9 @@ def run_openmc(cwd, threads=None):
     """
     cwd = Path(cwd)
     env = dict(os.environ)
-    for var in ("OMP_PROC_BIND", "OMP_PLACES"):
+    # OPENMC_CHAIN_FILE: not needed in multigroup mode, and every process
+    # would parse it (slow, and has failed on a network filesystem).
+    for var in ("OMP_PROC_BIND", "OMP_PLACES", "OPENMC_CHAIN_FILE"):
         env.pop(var, None)
     cmd = OPENMC_CMD + ["-s", str(threads or THREADS)]
     t0 = time.time()
