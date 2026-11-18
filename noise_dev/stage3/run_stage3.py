@@ -121,7 +121,7 @@ def run_case(label, mat, lib, f, eta, keff, ref, args, results, src_group=0,
         fre, fim = fom(vals, out["times"])
         ok_all &= ok
         entry[est] = {"mean": mean, "s_re": sre, "s_im": sim, "z": info["z"],
-                      "ok": ok}
+                      "ok": ok, "vals": vals}
         log(f"  {label} {est}: {'PASS' if ok else 'FAIL'} {fmt_info(info)}; "
             f"mean={np.round(mean, 6)} ref={np.round(ref, 6)} "
             f"corr={np.round(corr, 2)} FOM Re={np.round(fre, 2)} "

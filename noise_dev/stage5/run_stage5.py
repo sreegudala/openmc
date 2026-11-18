@@ -114,17 +114,34 @@ def main():
                    help="particles per batch for the 1e4 Hz point of 5c "
                    "(design doc: at least 5e5)")
     p.add_argument("--only", default="5a,5c,5b,5d,5e")
+    p.add_argument("--freqs", default="0.1,1,10,100",
+                   help="comma-separated 5a frequencies")
+    p.add_argument("--base-seed", type=int, default=1)
+    p.add_argument("--tag", default="",
+                   help="suffix for the work directory and output files")
     args = p.parse_args()
     only = args.only.split(",")
+    global WORK
+    if args.tag:
+        WORK = WORK.parent / f"work_{args.tag}"
     WORK.mkdir(exist_ok=True)
     s3.WORK = WORK
     s4.WORK = WORK
+    s3.LOG = LOG  # run_case logs land in this stage's log
     gate = []
+    saved = {}
 
     class A:
         reps = args.reps
         particles = args.particles
         batches = args.batches
+        base_seed = args.base_seed
+
+    def keep(e):
+        for est in ("tl", "col"):
+            saved[f"{e['label']}_{est}"] = e[est]["vals"]
+        saved[f"{e['label']}_S"] = e["S"]
+        saved[f"{e['label']}_NB"] = e["NB"]
 
     # ------------------------------------------------------------ 5a
     if "5a" in only:
@@ -134,7 +151,7 @@ def main():
         make_library({"m": mat}, lib)
         Lam = 1 / (2.1097e5 * 0.1)
         cancel = {"cancellation_mesh": cube_mesh(4)}
-        for f in [0.1, 1, 10, 100]:
+        for f in [float(x) for x in args.freqs.split(",")]:
             eta = 3.0 if f >= 100 else 1.0
             w = 2 * np.pi * f
             ref = inf_solve(mat, w, [1.0], 1.0)
@@ -144,6 +161,7 @@ def main():
             Kp = physical_K(w, TRIGA_BETA_K, KEEPIN_U235_LAMBDA, Lam)
             log(f"    measured ratio {e['ratio']:.5f}; physical K {Kp:.5f}; "
                 f"K~cb {kt:.5f}")
+            keep(e)
             gate.append((e["label"], e["ok"]))
 
     # ------------------------------------------------------------ 5c
@@ -157,6 +175,7 @@ def main():
         ref = inf_solve(mat, w, [1.0], 1.0)
         e = s3.run_case("5c_3c_100Hz_eta1", mat, lib, 100.0, 1.0, 1.0, ref,
                         A, [], noise_extra=cancel)
+        keep(e)
         gate.append((e["label"], e["ok"]))
         # 1e4 Hz point of 3a at eta = 1
         mat = ferrero_case()
@@ -171,13 +190,15 @@ def main():
             reps = args.reps
             particles = args.hf_particles
             batches = 4
+            base_seed = args.base_seed
         e = s3.run_case("5c_3a_1e4Hz_eta1", mat, lib, f, 1.0, 1.0, ref, B, [],
                         strength=abs(amp), phase=np.angle(amp),
                         noise_extra=cancel)
+        keep(e)
         gate.append((e["label"], e["ok"]))
 
     # ------------------------------------------------------- 5b, 5d, 5e
-    def slab_runs(tag, lib, f, h_list, shifts=(0.0,)):
+    def slab_runs(tag, lib, f, h_list, shifts=(0.0,), seed=args.base_seed):
         regions = [(60.0, "m")]
         k = s4.Slab([(60.0, s4.mat_4a(), 480)], x0=-30.0,
                     n_angles=64).eigenvalue()[0]
@@ -185,15 +206,20 @@ def main():
         mk = lambda extra: (lambda: s4.noise_model(
             lib, regions, -30.0, 1, f, 1.0, k, (14, 15), 0, 60,
             args.slab_particles, args.slab_batches, noise_extra=extra))
-        out = run_replicas(mk(None), WORK / f"{tag}_off_{f}", n_rep=args.reps)
+        out = run_replicas(mk(None), WORK / f"{tag}_off_{f}", n_rep=args.reps,
+                           base_seed=seed)
         res["off"] = (out["values"]["tl"].reshape(args.reps, -1), out["times"])
+        saved[f"{tag}_off_{f}"] = res["off"][0]
+        saved[f"{tag}_off_{f}_times"] = res["off"][1]
         for h in h_list:
             for sh in shifts:
                 extra = {"cancellation_mesh": slab_mesh(h, sh * h)}
                 out = run_replicas(mk(extra), WORK / f"{tag}_on_{f}_{h}_{sh}",
-                                   n_rep=args.reps)
+                                   n_rep=args.reps, base_seed=seed)
                 res[(h, sh)] = (out["values"]["tl"].reshape(args.reps, -1),
                                 out["times"])
+                saved[f"{tag}_on_{f}_{h}_{sh}"] = res[(h, sh)][0]
+                saved[f"{tag}_on_{f}_{h}_{sh}_times"] = res[(h, sh)][1]
         return res
 
     if "5b" in only or "5d" in only:
@@ -210,18 +236,30 @@ def main():
                 log(f"    (h=2 cm recorded as bias scale, not gated)")
     if "5d" in only:
         log("Test 5d: FOM with and without cancellation, slab 4a")
+        # seeds independent of 5b, so the 1 Hz h = 1 comparison is a fresh
+        # sample rather than a copy of the 5b runs
         for f in [0.1, 1.0]:
-            res = slab_runs("5d", lib, f, [1.0])
+            res = slab_runs("5d", lib, f, [1.0], seed=args.base_seed + 500000)
             vals_off, t_off = res["off"]
             vals_on, t_on = res[(1.0, 0.0)]
             mask = np.abs(vals_off.mean(0)) > 0.1 * np.abs(vals_off.mean(0)).max()
-            fr_off, fi_off = fom(vals_off, t_off)
-            fr_on, fi_on = fom(vals_on, t_on)
-            ratio_re = np.median(fr_on[mask] / fr_off[mask])
-            ratio_im = np.median(fi_on[mask] / fi_off[mask])
+
+            @np.errstate(divide="ignore", invalid="ignore")
+            def ratios(idx):
+                fr_off, fi_off = fom(vals_off[idx], t_off)
+                fr_on, fi_on = fom(vals_on[idx], t_on)
+                return (np.nanmedian(fr_on[mask] / fr_off[mask]),
+                        np.nanmedian(fi_on[mask] / fi_off[mask]))
+            ratio_re, ratio_im = ratios(np.arange(args.reps))
+            # paired bootstrap over replicas (same seeds on and off)
+            rng = np.random.default_rng(12345)
+            bs = np.array([ratios(rng.integers(0, args.reps, args.reps))
+                           for _ in range(2000)])
+            lo, hi = np.nanpercentile(bs, [2.5, 97.5], axis=0)
             log(f"  {f} Hz: median FOM ratio on/off Re={ratio_re:.2f} "
-                f"Im={ratio_im:.2f} (T off {t_off.sum():.0f}s, on "
-                f"{t_on.sum():.0f}s)")
+                f"[{lo[0]:.2f}, {hi[0]:.2f}] Im={ratio_im:.2f} "
+                f"[{lo[1]:.2f}, {hi[1]:.2f}] (95 % bootstrap; T off "
+                f"{t_off.sum():.0f}s, on {t_on.sum():.0f}s)")
             gate.append((f"5d {f} Hz FOM ratio > 1",
                          ratio_re > 1 and ratio_im > 1))
     if "5e" in only:
@@ -239,7 +277,8 @@ def main():
     for name, ok in gate:
         if not ok:
             log(f"  FAILED: {name}")
-    tag = args.only.replace(",", "_")
+    tag = args.only.replace(",", "_") + (f"_{args.tag}" if args.tag else "")
+    np.savez(HERE / f"stage5_vals_{tag}.npz", **saved)
     with open(HERE / f"stage5_log_{tag}.md", "w") as fh:
         fh.write("# Stage 5 log\n\n```\n" + "\n".join(LOG) + "\n```\n")
     raise SystemExit(1 if n_fail else 0)
