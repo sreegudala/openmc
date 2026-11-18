@@ -264,6 +264,51 @@ def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
     return ok_raw and ok_int and ok_hot, info
 
 
+def paired_correlated(on, off, mask=None, p_min=0.0027):
+    """STD-C for comparing two replica sets of the same problem (e.g.
+    weight cancellation on vs off) run with the same seeds.
+
+    Replica r of both sets shares its seed, so the pairs are positively
+    correlated and the per-replica differences d_r = on_r - off_r are
+    i.i.d.; the test is on d (paired), which is valid whether or not the
+    pairs are correlated. Gated: paired |t| < 3 for >= 99 % of entries (Re
+    and Im), |t| < 3 for the integral of d, and Hotelling T^2 of mean(d) = 0
+    on the leading principal components with p > p_min.
+
+    Returns
+    -------
+    ok : bool
+    info : dict with "t" (per-entry paired t, Re then Im), "n_bad",
+        "t_int", "hotelling", "ok_bins", "ok_int", "ok_hot", "corr_pair"
+        (median Re correlation between on and off replicas)
+    """
+    on = np.asarray(on)
+    off = np.asarray(off)
+    if mask is None:
+        mask = np.ones(on.shape[1], bool)
+    R = on.shape[0]
+    d = (on - off)[:, mask]
+    se_re = d.real.std(axis=0, ddof=1) / np.sqrt(R)
+    se_im = d.imag.std(axis=0, ddof=1) / np.sqrt(R)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = np.concatenate([d.real.mean(0) / se_re, d.imag.mean(0) / se_im])
+    t = t[np.isfinite(t)]
+    n_bad = int(np.sum(np.abs(t) >= 3))
+    ok_bins = n_bad <= np.floor(0.01 * t.size)
+    D = d.sum(axis=1)
+    t_int = (D.real.mean() / (D.real.std(ddof=1) / np.sqrt(R)),
+             D.imag.mean() / (D.imag.std(ddof=1) / np.sqrt(R)))
+    ok_int = bool(abs(t_int[0]) < 3 and abs(t_int[1]) < 3)
+    hot = hotelling_pca(d, np.zeros(d.shape[1]))
+    ok_hot = hot[2] > p_min
+    corr = np.median([np.corrcoef(on[:, i].real, off[:, i].real)[0, 1]
+                      for i in np.where(mask)[0]])
+    info = {"t": t, "n_bad": n_bad, "t_int": t_int, "hotelling": hot,
+            "ok_bins": ok_bins, "ok_int": ok_int, "ok_hot": ok_hot,
+            "corr_pair": float(corr)}
+    return bool(ok_bins and ok_int and ok_hot), info
+
+
 def fmt_info_correlated(info):
     raw, sh = info["raw"], info["shape"]
     k, T2, pv = info["hotelling"]

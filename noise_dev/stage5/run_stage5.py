@@ -11,9 +11,13 @@
 5e  5b repeated with a 32-bin histogram scattering library (linearly
     anisotropic, mu_bar = 0.3) against the same library with cancellation off.
 
-Pass: 5a, 5c STD; 5b, 5e t-histograms standard normal at the two finest
-meshes and no trend with origin shift (failure at h = 2 cm recorded as the
-bias scale, not a defect); 5d FOM ratio > 1; sum|w| plateaus/decays.
+Pass: 5a, 5c STD; 5b, 5e on-vs-off comparison passes at the two finest
+meshes and shows no trend with origin shift (failure at h = 2 cm recorded as
+the bias scale, not a defect); 5d FOM ratio > 1; sum|w| plateaus/decays.
+The on-vs-off comparison uses paired STD-C (harness.paired_correlated:
+per-bin |t| < 3, integral |t| < 3, Hotelling T^2 p > 0.0027), following the
+design doc amendment of 2026-11-18 for correlated mesh tallies; the doc's
+unpaired t histogram is logged only.
 """
 
 import argparse
@@ -30,7 +34,8 @@ sys.path.insert(0, str(HERE.parent / "stage3"))
 sys.path.insert(0, str(HERE.parent / "stage4"))
 
 from build import make_library  # noqa
-from harness import fmt_info, fom, run_replicas, std_criterion, summarize  # noqa
+from harness import (fmt_info, fom, paired_correlated, run_replicas,  # noqa
+                     std_criterion, summarize)
 import run_stage3 as s3  # noqa
 import run_stage4 as s4  # noqa
 from ref_g0 import KEEPIN_U235_LAMBDA, TRIGA_BETA_K, ktilde_cb, upsilon  # noqa
@@ -69,30 +74,45 @@ def physical_K(omega, beta_k, lam_k, Lam):
 
 
 def t_hist(name, on, off):
-    """Bin-wise t statistics between two replica sets (complex)."""
+    """Compare cancellation on vs off (same seeds) with paired STD-C.
+
+    Bins above 20 % relative error (either set) are excluded, as in the
+    design doc. The doc's unpaired t-histogram test is logged only: mesh
+    bins are strongly correlated (see the STD-C amendment), and on/off
+    replicas sharing a seed are correlated too.
+    """
     m_on, sre_on, sim_on, _ = summarize(on)
     m_off, sre_off, sim_off, _ = summarize(off)
     rel = np.maximum(np.hypot(sre_off, sim_off), np.hypot(sre_on, sim_on)) \
         / np.abs(m_off)
     mask = rel < 0.2
-    t = np.concatenate([
+    ok, info = paired_correlated(on, off, mask)
+    tu = np.concatenate([
         ((m_on.real - m_off.real) / np.hypot(sre_on, sre_off))[mask],
         ((m_on.imag - m_off.imag) / np.hypot(sim_on, sim_off))[mask]])
-    ok = (abs(t.mean()) <= 0.3 and 0.8 <= t.std(ddof=1) <= 1.2
-          and np.sum(np.abs(t) >= 3) <= np.floor(0.01 * t.size)) \
-        if t.size >= 30 else bool(np.all(np.abs(t) < 3))
-    log(f"  {name}: n={t.size} mean={t.mean():+.2f} std={t.std(ddof=1):.2f} "
-        f"max|t|={np.abs(t).max():.2f} {'standard-normal' if ok else 'NOT standard-normal'}")
-    return ok, t
+    k, T2, pv = info["hotelling"]
+    rel_diff = np.abs(m_on[mask] / m_off[mask] - 1).max()
+    log(f"  {name}: {'PASS' if ok else 'FAIL'} paired: n={info['t'].size} "
+        f"bad={info['n_bad']} max|t|={np.abs(info['t']).max():.2f}; integral "
+        f"t Re={info['t_int'][0]:+.2f} Im={info['t_int'][1]:+.2f}; Hotelling "
+        f"k={k} T2={T2:.1f} p={pv:.3f} | logged: paired t hist "
+        f"mean={info['t'].mean():+.2f} std={info['t'].std(ddof=1):.2f}, "
+        f"unpaired t hist mean={tu.mean():+.2f} std={tu.std(ddof=1):.2f}, "
+        f"on/off replica corr {info['corr_pair']:.2f}, max |on/off - 1| "
+        f"{rel_diff:.2e}")
+    return ok, info["t"]
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--reps", type=int, default=20)
-    p.add_argument("--particles", type=int, default=5000)
+    p.add_argument("--particles", type=int, default=20000)
     p.add_argument("--batches", type=int, default=20)
-    p.add_argument("--slab-particles", type=int, default=2000)
-    p.add_argument("--slab-batches", type=int, default=10)
+    p.add_argument("--slab-particles", type=int, default=20000)
+    p.add_argument("--slab-batches", type=int, default=20)
+    p.add_argument("--hf-particles", type=int, default=500000,
+                   help="particles per batch for the 1e4 Hz point of 5c "
+                   "(design doc: at least 5e5)")
     p.add_argument("--only", default="5a,5c,5b,5d,5e")
     args = p.parse_args()
     only = args.only.split(",")
@@ -113,18 +133,14 @@ def main():
         lib = WORK / "lib_3b.h5"
         make_library({"m": mat}, lib)
         Lam = 1 / (2.1097e5 * 0.1)
-        mesh = cube_mesh(4)
-        orig = s3.cube_model
+        cancel = {"cancellation_mesh": cube_mesh(4)}
         for f in [0.1, 1, 10, 100]:
             eta = 3.0 if f >= 100 else 1.0
             w = 2 * np.pi * f
             ref = inf_solve(mat, w, [1.0], 1.0)
-            s3.cube_model = lambda *a, **k: orig(
-                *a, noise_extra={"cancellation_mesh": mesh}, **k)
             kt = ktilde_cb(w, eta, TRIGA_BETA_K, KEEPIN_U235_LAMBDA, Lam)
             e = s3.run_case(f"5a_{f}Hz", mat, lib, f, eta, 1.0, ref, A, [],
-                            kt=None)
-            s3.cube_model = orig
+                            kt=None, noise_extra=cancel)
             Kp = physical_K(w, TRIGA_BETA_K, KEEPIN_U235_LAMBDA, Lam)
             log(f"    measured ratio {e['ratio']:.5f}; physical K {Kp:.5f}; "
                 f"K~cb {kt:.5f}")
@@ -136,14 +152,11 @@ def main():
         mat = s3.triga_1g()
         lib = WORK / "lib_3b.h5"
         make_library({"m": mat}, lib)
-        mesh = cube_mesh(4)
-        orig = s3.cube_model
-        s3.cube_model = lambda *a, **k: orig(
-            *a, noise_extra={"cancellation_mesh": mesh}, **k)
+        cancel = {"cancellation_mesh": cube_mesh(4)}
         w = 2 * np.pi * 100
         ref = inf_solve(mat, w, [1.0], 1.0)
         e = s3.run_case("5c_3c_100Hz_eta1", mat, lib, 100.0, 1.0, 1.0, ref,
-                        A, [])
+                        A, [], noise_extra=cancel)
         gate.append((e["label"], e["ok"]))
         # 1e4 Hz point of 3a at eta = 1
         mat = ferrero_case()
@@ -156,12 +169,12 @@ def main():
 
         class B:
             reps = args.reps
-            particles = 500000
+            particles = args.hf_particles
             batches = 4
         e = s3.run_case("5c_3a_1e4Hz_eta1", mat, lib, f, 1.0, 1.0, ref, B, [],
-                        strength=abs(amp), phase=np.angle(amp))
+                        strength=abs(amp), phase=np.angle(amp),
+                        noise_extra=cancel)
         gate.append((e["label"], e["ok"]))
-        s3.cube_model = orig
 
     # ------------------------------------------------------- 5b, 5d, 5e
     def slab_runs(tag, lib, f, h_list, shifts=(0.0,)):
