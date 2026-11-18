@@ -18,8 +18,11 @@ converged S_N value within statistics, and the noise run uses the S_N value
 (precision ~1e-7, far below an affordable MC sigma_k). Sensitivity is logged
 by rerunning 4a at 0.1 Hz with k +- 2 sigma_k (OpenMC sigma_k).
 
-Pass: STD on mesh cells where |dphi| > 10 % of its maximum; 4c amplitude
-within 2 % and phase within 1 deg.
+Pass: STD on mesh cells where |dphi| > 10 % of its maximum, applied as STD-C
+(design doc amendment 2026-11-18: mesh bins are strongly correlated, so the
+z-histogram test is replaced by an integral check and a Hotelling T^2 test
+on the leading principal components); 4c amplitude within 2 % and phase
+within 1 deg.
 """
 
 import argparse
@@ -36,7 +39,8 @@ sys.path.insert(0, str(HERE.parent / "reference"))
 
 from build import box_source, make_library, slab_model, x_mesh  # noqa
 import harness  # noqa
-from harness import fmt_info, fom, run_replicas, std_criterion, summarize  # noqa
+from harness import (fmt_info, fmt_info_correlated, fom, run_replicas,  # noqa
+                     std_correlated, std_criterion, summarize)
 from noise_common import Material  # noqa
 from ref_diff1d import slab_noise  # noqa
 from ref_g0 import g0, ktilde_cb  # noqa
@@ -113,38 +117,13 @@ def noise_model(lib, regions, x0, G, f, eta, keff, src_region, src_group,
 
 
 def check(label, vals, ref, mask_frac=0.1):
+    """Gate a mesh tally with STD-C (design doc amendment 2026-11-18)."""
     mean, sre, sim, corr = summarize(vals)
     mask = np.abs(ref) > mask_frac * np.abs(ref).max()
-    ok, info = std_criterion(mean, sre, sim, ref, mask=mask)
-    log(f"  {label}: {'PASS' if ok else 'FAIL'} {fmt_info(info)}")
-    correlation_diagnostics(vals, ref, mask)
-    return ok, mean, sre, sim, info
-
-
-def correlation_diagnostics(vals, ref, mask):
-    """Informational: separate the common (integrated) fluctuation from the
-    shape. Mesh bins share fission chains, so their z values are strongly
-    correlated and the STD histogram test (which assumes independent
-    entries) can fail for an unbiased estimator. Logs the z of the masked
-    integral, the STD z histogram of the shape v_r / sum(v_r), and the
-    median replica correlation between neighbouring and distant bins."""
-    R = vals.shape[0]
-    v = vals[:, mask]
-    r = ref[mask]
-    T = v.sum(axis=1)
-    zT = [(T.real.mean() - r.sum().real) / (T.real.std(ddof=1) / np.sqrt(R)),
-          (T.imag.mean() - r.sum().imag) / (T.imag.std(ddof=1) / np.sqrt(R))]
-    shape = v / T[:, None]
-    ms, sre, sim, _ = summarize(shape)
-    _, info = std_criterion(ms, sre, sim, r / r.sum(), amp_tol=np.inf,
-                            phase_tol_deg=np.inf)
-    c = np.corrcoef(v.real.T)
-    near = np.median(np.diag(c, 1))
-    far = np.median(c[np.triu_indices_from(c, k=10)])
-    log(f"    integral z: Re {zT[0]:+.2f} Im {zT[1]:+.2f}; shape z: "
-        f"n={info['n']} mean={info['z_mean']:+.2f} std={info['z_std']:.2f} "
-        f"max|z|={info['max_abs_z']:.2f}; replica corr (Re) neighbour "
-        f"{near:.2f}, >=10 bins apart {far:.2f}")
+    ok, info = std_correlated(vals, ref, mask)
+    log(f"  {label}: {'PASS' if ok else 'FAIL'} (STD-C) "
+        f"{fmt_info_correlated(info)}")
+    return ok, mean, sre, sim, info["raw"]
 
 
 def main():

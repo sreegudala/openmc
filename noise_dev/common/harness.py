@@ -7,6 +7,10 @@ histogram has mean within +-0.3 and standard deviation within 0.8-1.2. In
 addition amplitude must agree within amp_tol (relative) and phase within
 phase_tol (degrees), evaluated only where the replica sigma is below one
 third of that tolerance.
+
+STD-C (std_correlated) replaces the histogram test for strongly correlated
+tallies such as mesh bins with an integral check and a Hotelling T^2 test;
+see its docstring.
 """
 
 import os
@@ -19,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 import openmc
+import scipy.stats
 import openmc.noise
 
 
@@ -166,6 +171,113 @@ def std_criterion(mean, s_re, s_im, ref, amp_tol=0.02, phase_tol_deg=1.0,
             "ok_z": ok_z, "ok_hist": ok_hist, "ok_amp": ok_amp, "ok_ph": ok_ph,
             "z": z}
     return ok_z and ok_hist and ok_amp and ok_ph, info
+
+
+def hotelling_pca(vals, ref, mask=None, frac=0.99):
+    """Hotelling T^2 test of mean == ref for a correlated complex vector.
+
+    Re and Im of the gated entries are stacked and standardised by their
+    replica standard deviations; the test uses the k leading principal
+    components of the replica covariance that explain `frac` of the
+    variance (k <= R - 3). Under the null, (R - k) / (k (R - 1)) T^2 follows
+    F(k, R - k).
+
+    Returns
+    -------
+    k, T2, p_value
+    """
+    vals = np.asarray(vals)
+    ref = np.asarray(ref).astype(complex)
+    if mask is None:
+        mask = np.ones(ref.shape, bool)
+    v = vals[:, mask]
+    r = ref[mask]
+    X = np.concatenate([v.real, v.imag], axis=1)
+    x0 = np.concatenate([r.real, r.imag])
+    R = X.shape[0]
+    sd = X.std(axis=0, ddof=1)
+    keep = sd > 0
+    Xs = (X[:, keep] - X[:, keep].mean(axis=0)) / sd[keep]
+    ds = (X[:, keep].mean(axis=0) - x0[keep]) / sd[keep]
+    _, S, Vt = np.linalg.svd(Xs, full_matrices=False)
+    ev = S**2 / (R - 1)
+    k = int(np.searchsorted(np.cumsum(ev) / ev.sum(), frac) + 1)
+    k = max(1, min(k, R - 3))
+    proj = Vt[:k] @ ds
+    T2 = float(R * np.sum(proj**2 / ev[:k]))
+    F = (R - k) / (k * (R - 1)) * T2
+    return k, T2, float(scipy.stats.f.sf(F, k, R - k))
+
+
+def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
+                   p_min=0.0027):
+    """STD-C: standard criterion for strongly correlated tallies (mesh bins).
+
+    Gated: (i) |z| < 3 for >= 99 % of raw entries and the amplitude/phase
+    limits, as in STD; (ii) |z| < 3 for Re and Im of the integral sum(v)
+    over the gated entries; (iii) Hotelling T^2 on the leading principal
+    components (hotelling_pca) with p > p_min (0.0027, the two-sided 3 sigma
+    level). Logged only: the raw z histogram and the z histogram of the
+    per-replica shape v / sum(v). See the design document, "Amendment
+    (2026-11-18)".
+
+    Parameters
+    ----------
+    vals : (R, N) complex replica values
+    ref : (N,) complex reference
+    mask : (N,) bool, entries to gate (default all)
+
+    Returns
+    -------
+    ok : bool
+    info : dict with "raw" and "shape" (std_criterion infos), "z_int",
+        "hotelling" (k, T2, p) and the flags "ok_raw", "ok_int", "ok_hot"
+    """
+    vals = np.asarray(vals)
+    ref = np.asarray(ref).astype(complex)
+    if mask is None:
+        mask = np.ones(ref.shape, bool)
+    R = vals.shape[0]
+    mean, s_re, s_im, _ = summarize(vals)
+    _, raw = std_criterion(mean, s_re, s_im, ref, amp_tol, phase_tol_deg,
+                           mask=mask)
+    ok_raw = bool(raw["ok_z"] and raw["ok_amp"] and raw["ok_ph"])
+
+    v = vals[:, mask]
+    r = ref[mask]
+    T = v.sum(axis=1)
+    rT = r.sum()
+    z_int = ((T.real.mean() - rT.real) / (T.real.std(ddof=1) / np.sqrt(R)),
+             (T.imag.mean() - rT.imag) / (T.imag.std(ddof=1) / np.sqrt(R)))
+    ok_int = bool(abs(z_int[0]) < 3 and abs(z_int[1]) < 3)
+
+    hot = hotelling_pca(vals, ref, mask)
+    ok_hot = hot[2] > p_min
+
+    ms, ss_re, ss_im, _ = summarize(v / T[:, None])
+    _, shape = std_criterion(ms, ss_re, ss_im, r / rT, amp_tol=np.inf,
+                             phase_tol_deg=np.inf)
+    info = {"raw": raw, "shape": shape, "z_int": z_int, "hotelling": hot,
+            "ok_raw": ok_raw, "ok_int": ok_int, "ok_hot": ok_hot,
+            "corr_neighbour": float(np.median(np.diag(
+                np.corrcoef(v.real.T), 1))) if v.shape[1] > 1 else np.nan}
+    return ok_raw and ok_int and ok_hot, info
+
+
+def fmt_info_correlated(info):
+    raw, sh = info["raw"], info["shape"]
+    k, T2, pv = info["hotelling"]
+    flag = lambda ok: "ok" if ok else "FAIL"
+    return (f"bins [{flag(info['ok_raw'])}] n={raw['n']} bad={raw['n_bad']} "
+            f"max|z|={raw['max_abs_z']:.2f}; amp {raw['amp_eval']} evaluated, "
+            f"max rel err {raw['max_rel_amp']:.2e}; phase {raw['ph_eval']} "
+            f"evaluated, max {raw['max_dphi']:.3f} deg | integral "
+            f"[{flag(info['ok_int'])}] z Re={info['z_int'][0]:+.2f} "
+            f"Im={info['z_int'][1]:+.2f} | Hotelling [{flag(info['ok_hot'])}] "
+            f"k={k} T2={T2:.1f} p={pv:.3f} | logged: raw hist "
+            f"mean={raw['z_mean']:+.2f} std={raw['z_std']:.2f}, shape hist "
+            f"mean={sh['z_mean']:+.2f} std={sh['z_std']:.2f}, neighbour corr "
+            f"{info['corr_neighbour']:.2f}")
 
 
 def fmt_info(info):
