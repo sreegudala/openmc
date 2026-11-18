@@ -153,14 +153,26 @@ def main():
     p.add_argument("--particles", type=int, default=20000)
     p.add_argument("--batches", type=int, default=20)
     p.add_argument("--only", default="4a,4b,4c,ksens")
+    p.add_argument("--freqs", default=None,
+                   help="comma-separated subset of the 4a frequencies")
+    p.add_argument("--base-seed", type=int, default=1)
+    p.add_argument("--tag", default="",
+                   help="suffix for the work directory, npz and log files")
     args = p.parse_args()
     only = args.only.split(",")
+    global WORK
+    sfx = f"_{args.tag}" if args.tag else ""
+    if args.tag:
+        WORK = HERE / f"work_{args.tag}"
     WORK.mkdir(exist_ok=True)
     gate = []
     zs = []
 
     # ---------------------------------------------------------------- 4a
     freqs = [0.1, 1, 10, 100]
+    if args.freqs:
+        freqs = [float(x) if "." in x else int(x)
+                 for x in args.freqs.split(",")]
     regions = [(60.0, "m")]
     mat = mat_4a()
     lib = WORK / "lib_4a.h5"
@@ -188,7 +200,7 @@ def main():
             out = run_replicas(lambda: noise_model(
                 lib, regions, -30.0, 1, f, eta, k_sn, (14, 15), 0, 60,
                 args.particles, args.batches), WORK / f"4a_{f}",
-                n_rep=args.reps)
+                n_rep=args.reps, base_seed=args.base_seed)
             vals = out["values"]["tl"].reshape(args.reps, -1)
             ok, mean, sre, sim, info = check(f"4a {f} Hz", vals, ref)
             zs.append(info["z"])
@@ -203,7 +215,7 @@ def main():
             log(f"    diffusion vs S_N (informational): max |rel diff| "
                 f"{np.abs(dd[m] / ref[m] - 1).max():.3f}; T="
                 f"{out['times'].sum():.0f}s")
-            np.savez(HERE / f"stage4a_{f}Hz.npz", mean=mean, s_re=sre,
+            np.savez(HERE / f"stage4a_{f}Hz{sfx}.npz", mean=mean, s_re=sre,
                      s_im=sim, ref=ref, diff=dd, vals=vals,
                      times=out["times"], x=0.5 * (edges[1:] + edges[:-1]))
 
@@ -215,7 +227,7 @@ def main():
             out = run_replicas(lambda: noise_model(
                 lib, regions, -30.0, 1, f, 1.0, kk, (14, 15), 0, 60,
                 args.particles, args.batches), WORK / f"4a_ksens{sign}",
-                n_rep=max(args.reps // 4, 3))
+                n_rep=max(args.reps // 4, 3), base_seed=args.base_seed)
             mean = out["values"]["tl"].reshape(-1, 60).mean(0)
             m = np.abs(ref) > 0.1 * np.abs(ref).max()
             log(f"  k sensitivity 0.1 Hz, k = k_SN {sign:+d} sigma_k "
@@ -299,15 +311,21 @@ def main():
         nb = int(width / 5)
         e2 = np.linspace(x0, -x0, nb + 1)
         for f in [1, 10]:
-            ref = 5.0 * bin_to_mesh(sl2, refs2[f], e2)[:, ::-1].reshape(-1)
+            # ref_sn1d source is 1 per cm^3 in the 5 cm cell; OpenMC emits one
+            # particle over 5 x 10 x 10 cm^3, and the mesh tally integrates
+            # over the 5 x 10 x 10 cm^3 bin, so the volumes cancel: the tally
+            # equals the bin-averaged 1-D flux (as in 4a). An earlier factor 5
+            # here was wrong (OpenMC / ref was 0.200 in every bin).
+            ref = bin_to_mesh(sl2, refs2[f], e2)[:, ::-1].reshape(-1)
             out = run_replicas(lambda: noise_model(
                 lib2, reg2, x0, 2, f, 1.0, k2, src, 1, nb, args.particles,
-                args.batches), WORK / f"4b_{f}", n_rep=args.reps)
+                args.batches), WORK / f"4b_{f}", n_rep=args.reps,
+                base_seed=args.base_seed)
             vals = out["values"]["tl"].reshape(args.reps, -1)
             ok, mean, sre, sim, info = check(f"4b {f} Hz", vals, ref)
             zs.append(info["z"])
             gate.append((f"4b {f} Hz", ok))
-            np.savez(HERE / f"stage4b_{f}Hz.npz", mean=mean, s_re=sre,
+            np.savez(HERE / f"stage4b_{f}Hz{sfx}.npz", mean=mean, s_re=sre,
                      s_im=sim, ref=ref, edges=e2, vals=vals,
                      times=out["times"])
 
@@ -320,7 +338,7 @@ def main():
     for name, ok in gate:
         if not ok:
             log(f"  FAILED: {name}")
-    tag = args.only.replace(",", "_")
+    tag = args.only.replace(",", "_") + sfx
     with open(HERE / f"stage4_log_{tag}.md", "w") as fh:
         fh.write("# Stage 4 log\n\n```\n" + "\n".join(LOG) + "\n```\n")
     raise SystemExit(1 if n_fail else 0)
