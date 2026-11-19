@@ -65,6 +65,15 @@ def abeille_dir():
     return Path(d)
 
 
+def abeille_exe():
+    """bin/abeille (tacc/build_abeille.sh), else build/abeille (local)."""
+    for sub in ("bin", "build"):
+        exe = abeille_dir() / sub / "abeille"
+        if exe.exists():
+            return exe
+    raise FileNotFoundError(f"no Abeille executable under {abeille_dir()}")
+
+
 def abeille_geometry():
     """Materials, surfaces, cells and universes of the shipped
     noise_oscillation.yaml (everything before its tally filters)."""
@@ -168,7 +177,7 @@ def abeille_input(nbatches, nignored, seed, max_minutes, particles):
 
 
 def run_abeille(args):
-    exe = abeille_dir() / "build" / "abeille"
+    exe = abeille_exe()
     work = HERE / f"work_6c_abeille{args.sfx}"
     work.mkdir(exist_ok=True)
     dirs = []
@@ -206,7 +215,7 @@ def run_abeille(args):
 
 
 def run_abeille_static(args):
-    exe = abeille_dir() / "build" / "abeille"
+    exe = abeille_exe()
     d = HERE / "work_6c_abeille_static"
     d.mkdir(exist_ok=True)
     text = (abeille_geometry()

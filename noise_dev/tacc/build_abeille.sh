@@ -5,7 +5,9 @@
 #
 #   bash tacc/build_abeille.sh            # from noise_dev/
 #
-# Destination: $ABEILLE_DIR, default <parent of $OPENMC_DEV_SRC>/abeille.
+# Destination: $ABEILLE_DIR, default <parent of $OPENMC_DEV_SRC>/abeille;
+# executable $ABEILLE_DIR/bin/abeille. Build tree: $ABEILLE_BUILD_DIR, default
+# ${TMPDIR:-/tmp}/abeille_build_$USER (node-local).
 #
 # Pinned to commit c6aaa5f (the one read in Stage 0) plus one local fix:
 # Abeille's noise driver restores kcol after each noise batch but records the
@@ -49,11 +51,19 @@ if new not in s:
     p.write_text(s.replace(old, new))
 EOF
 
+# Build on node-local disk: the dependencies include all of Boost (~690 MB,
+# ~65k files), which unpacks very slowly on Lustre. Only the executable is
+# installed (HDF5 and the other dependencies are linked statically; it needs
+# the compiler's libstdc++/libgomp, i.e. the same gcc module at run time).
+BUILD=${ABEILLE_BUILD_DIR:-${TMPDIR:-/tmp}/abeille_build_$USER}
+mkdir -p "$BUILD"
 # CMAKE_POLICY_VERSION_MINIMUM: CMake >= 4 rejects the cmake_minimum_required
 # (< 3.5) of the downloaded docopt.cpp v0.6.3
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DABEILLE_USE_LTO=OFF \
+cmake -S "$DEST" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release -DABEILLE_USE_LTO=OFF \
   -DABEILLE_GUI_PLOT=OFF -DABEILLE_USE_MPI=OFF \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-cmake --build build -j "${BUILD_JOBS:-8}"
-echo "Abeille built: $DEST/build/abeille"
-"$DEST/build/abeille" --version | head -3
+cmake --build "$BUILD" -j "${BUILD_JOBS:-8}"
+mkdir -p "$DEST/bin"
+cp "$BUILD/abeille" "$DEST/bin/abeille"
+echo "Abeille installed: $DEST/bin/abeille (build tree $BUILD can be removed)"
+"$DEST/bin/abeille" --version | head -3
