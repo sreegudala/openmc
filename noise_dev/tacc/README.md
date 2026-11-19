@@ -44,6 +44,29 @@ for 3a/3b/3d), `--base-seed N` (replica r uses seed N + 7919 r), `--tag T`
 (work dir `work_T/`, log suffix `_T`, so it never overwrites the default
 run).
 
+## Stage 6c: Abeille reference
+
+Abeille (GPL-3.0) is built outside the repo, in `$ABEILLE_DIR` (default
+`<parent of $OPENMC_DEV_SRC>/abeille`), on a login node because CMake
+downloads its dependencies:
+
+```bash
+bash tacc/build_abeille.sh
+```
+
+The script pins commit c6aaa5f and applies one local fix to Abeille's noise
+driver (see the script header). Then, from `noise_dev/`:
+
+```bash
+sbatch -J s6c_ab tacc/noise_job.slurm stage6/run_stage6c.py abeille
+sbatch -J s6c_omc tacc/noise_job.slurm stage6/run_stage6c.py openmc
+```
+
+`abeille` runs 20 replicas of 600 noise batches (1e5 particles, Abeille's
+cancellation) and stops each cleanly after `--max-minutes` (default 1260).
+The Abeille static flux used for normalisation is committed
+(`stage6c_abeille_static.npz`); `analyze` runs locally.
+
 ## Bringing results back
 
 From the local machine (adjust the host), copy logs and summaries but not the

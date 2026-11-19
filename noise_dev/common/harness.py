@@ -309,6 +309,88 @@ def paired_correlated(on, off, mask=None, p_min=0.0027):
     return bool(ok_bins and ok_int and ok_hot), info
 
 
+def welch_p(xa, xb, rel_sys_b=0.0):
+    """Two-sided Welch p-values of mean(xa) = mean(xb) along axis 0 (real
+    arrays), with an optional relative systematic on b treated as known."""
+    Ra, Rb = xa.shape[0], xb.shape[0]
+    va = xa.var(axis=0, ddof=1) / Ra
+    vb = xb.var(axis=0, ddof=1) / Rb
+    vs = (rel_sys_b * xb.mean(axis=0))**2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = (xa.mean(axis=0) - xb.mean(axis=0)) / np.sqrt(va + vb + vs)
+        df = (va + vb)**2 / (va**2 / (Ra - 1) + vb**2 / (Rb - 1))
+    return t, 2 * scipy.stats.t.sf(np.abs(t), df)
+
+
+def two_sample_correlated(a, b, mask=None, b_rel_sys=0.0, p_min=0.0027):
+    """STD-C between two independent Monte Carlo replica sets (e.g. OpenMC
+    against an Abeille reference), for strongly correlated tallies.
+
+    Gated: (i) Welch p > p_min (the two-sided 3 sigma level at the Welch
+    degrees of freedom) for >= 99 % of entries (Re and Im), where b also
+    carries a relative systematic b_rel_sys (e.g. the uncertainty of a
+    normalisation applied to every replica of b); (ii) the same for Re and
+    Im of the integral over the gated entries; (iii) a two-sample Hotelling
+    T^2 of mean_a = mean_b on the leading principal components (99 % of the
+    pooled within-set variance, k <= Ra + Rb - 3), with
+    (Ra + Rb - k - 1) / (k (Ra + Rb - 2)) T^2 ~ F(k, Ra + Rb - k - 1) and
+    pass if p > p_min. b_rel_sys is not included in (iii).
+
+    On fields dominated by a few smooth modes, (i) has a false-alarm rate
+    well above p_min because exceedances cluster (about 4 % for 20 + 20
+    replicas of a six-mode synthetic field); (ii) and (iii) hold their
+    nominal rates.
+
+    Returns
+    -------
+    ok : bool
+    info : dict with "z" (Welch t, Re then Im), "n_bad", "z_int",
+        "hotelling", "ok_bins", "ok_int", "ok_hot"
+    """
+    a = np.asarray(a)
+    b = np.asarray(b)
+    if mask is None:
+        mask = np.ones(a.shape[1], bool)
+    Ra, Rb = a.shape[0], b.shape[0]
+    va, vb = a[:, mask], b[:, mask]
+
+    tr, pr = welch_p(va.real, vb.real, b_rel_sys)
+    ti, pi = welch_p(va.imag, vb.imag, b_rel_sys)
+    t = np.concatenate([tr, ti])
+    pv = np.concatenate([pr, pi])
+    fin = np.isfinite(t)
+    z, pv = t[fin], pv[fin]
+    n_bad = int(np.sum(pv <= p_min))
+    ok_bins = n_bad <= np.floor(0.01 * z.size)
+
+    Ta, Tb = va.sum(1), vb.sum(1)
+    zi_r, pi_r = welch_p(Ta.real[:, None], Tb.real[:, None], b_rel_sys)
+    zi_i, pi_i = welch_p(Ta.imag[:, None], Tb.imag[:, None], b_rel_sys)
+    z_int = (float(zi_r[0]), float(zi_i[0]))
+    ok_int = bool(pi_r[0] > p_min and pi_i[0] > p_min)
+
+    Xa = np.concatenate([va.real, va.imag], axis=1)
+    Xb = np.concatenate([vb.real, vb.imag], axis=1)
+    C = np.vstack([Xa - Xa.mean(0), Xb - Xb.mean(0)])
+    n = Ra + Rb
+    sd = np.sqrt((C**2).sum(0) / (n - 2))
+    keep = sd > 0
+    Cs = C[:, keep] / sd[keep]
+    d = (Xa.mean(0) - Xb.mean(0))[keep] / sd[keep]
+    _, S, Vt = np.linalg.svd(Cs, full_matrices=False)
+    ev = S**2 / (n - 2)
+    k = int(np.searchsorted(np.cumsum(ev) / ev.sum(), 0.99) + 1)
+    k = max(1, min(k, n - 3))
+    proj = Vt[:k] @ d
+    T2 = float(Ra * Rb / n * np.sum(proj**2 / ev[:k]))
+    F = (n - k - 1) / (k * (n - 2)) * T2
+    p = float(scipy.stats.f.sf(F, k, n - k - 1))
+    ok_hot = p > p_min
+    info = {"z": z, "n_bad": n_bad, "z_int": z_int, "hotelling": (k, T2, p),
+            "ok_bins": bool(ok_bins), "ok_int": ok_int, "ok_hot": ok_hot}
+    return bool(ok_bins and ok_int and ok_hot), info
+
+
 def fmt_info_correlated(info):
     raw, sh = info["raw"], info["shape"]
     k, T2, pv = info["hotelling"]
