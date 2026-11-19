@@ -49,8 +49,11 @@ if new not in s:
     p.write_text(s.replace(old, new))
 EOF
 
+# CMAKE_POLICY_VERSION_MINIMUM: CMake >= 4 rejects the cmake_minimum_required
+# (< 3.5) of the downloaded docopt.cpp v0.6.3
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DABEILLE_USE_LTO=OFF \
-  -DABEILLE_GUI_PLOT=OFF -DABEILLE_USE_MPI=OFF
+  -DABEILLE_GUI_PLOT=OFF -DABEILLE_USE_MPI=OFF \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build build -j "${BUILD_JOBS:-8}"
 echo "Abeille built: $DEST/build/abeille"
 "$DEST/build/abeille" --version | head -3
