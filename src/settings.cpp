@@ -24,6 +24,7 @@
 #include "openmc/mcpl_interface.h"
 #include "openmc/mesh.h"
 #include "openmc/message_passing.h"
+#include "openmc/noise.h"
 #include "openmc/output.h"
 #include "openmc/plot.h"
 #include "openmc/random_lcg.h"
@@ -1438,6 +1439,21 @@ void read_noise_settings(pugi::xml_node node)
       fatal_error("Noise max_generations must be at least 1.");
   }
 
+  // Sampled noise source: perturbed cells and static-phase controls
+  if (check_for_node(node, "nskip")) {
+    noise::nskip = std::stoi(get_node_value(node, "nskip"));
+    if (noise::nskip < 1)
+      fatal_error("Noise nskip must be at least 1.");
+  }
+  if (check_for_node(node, "static_inactive")) {
+    noise::static_inactive = std::stoi(get_node_value(node, "static_inactive"));
+    if (noise::static_inactive < 0)
+      fatal_error("Noise static_inactive must be non-negative.");
+  }
+  for (auto pnode : node.children("perturbation")) {
+    noise::read_perturbation(pnode);
+  }
+
   // Validation: the noise solver is multigroup fixed-source only
   if (run_CE) {
     fatal_error("Noise mode requires multigroup energy mode.");
@@ -1482,6 +1498,7 @@ void free_memory_settings()
   settings::noise_cancellation_mesh = C_NONE;
   settings::noise_cancellation_group = true;
   settings::noise_cancellation_roulette = true;
+  noise::reset_settings();
   settings::noise_growth_limit = 100.0;
 }
 

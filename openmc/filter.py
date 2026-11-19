@@ -28,7 +28,7 @@ _FILTER_TYPES = (
     'spatiallegendre', 'sphericalharmonics', 'zernike', 'zernikeradial', 'particle',
     'particleproduction', 'cellinstance', 'collision', 'time', 'parentnuclide',
     'weight', 'meshborn', 'meshsurface', 'meshmaterial', 'reaction',
-    'complexpart',
+    'complexpart', 'noisephase',
 )
 
 def _mesh_current_names(mesh):
@@ -1430,6 +1430,60 @@ class ComplexPartFilter(Filter):
                 raise ValueError("ComplexPartFilter bins must be "
                                  "['real', 'imag']")
         self._bins = np.array(['real', 'imag'], dtype=str)
+
+    @classmethod
+    def from_hdf5(cls, group, **kwargs):
+        filter_id = int(group.name.split('/')[-1].lstrip('filter '))
+        return cls(filter_id=filter_id)
+
+    @classmethod
+    def from_xml_element(cls, elem, **kwargs):
+        filter_id = int(get_text(elem, "id"))
+        return cls(filter_id=filter_id)
+
+
+class NoisePhaseFilter(Filter):
+    """Separates the static and noise phases of a sampled-source noise run.
+
+    In frequency-domain noise mode with perturbations (see
+    :attr:`openmc.Settings.noise`), each batch transports one static
+    generation in which the noise source is sampled, then the noise problem.
+    Bin ``'static'`` scores the static sampling generation (the static flux
+    :math:`\\phi_0` in the same normalisation as the noise result) and bin
+    ``'noise'`` scores the noise transport. Only tallies with this filter
+    score during the static phase.
+
+    Parameters
+    ----------
+    bins : iterable of str, optional
+        Ignored; the bins are always ``('static', 'noise')``.
+    filter_id : int
+        Unique identifier for the filter
+
+    Attributes
+    ----------
+    bins : numpy.ndarray
+        The bins ``['static', 'noise']``
+    id : int
+        Unique identifier for the filter
+    num_bins : int
+        The number of filter bins (always 2)
+
+    """
+
+    def __init__(self, bins=None, filter_id=None):
+        self.bins = bins
+        self.id = filter_id
+
+    @Filter.bins.setter
+    def bins(self, bins):
+        if bins is not None:
+            bins = [b.decode() if isinstance(b, bytes) else str(b)
+                    for b in bins]
+            if list(bins) != ['static', 'noise']:
+                raise ValueError("NoisePhaseFilter bins must be "
+                                 "['static', 'noise']")
+        self._bins = np.array(['static', 'noise'], dtype=str)
 
     @classmethod
     def from_hdf5(cls, group, **kwargs):

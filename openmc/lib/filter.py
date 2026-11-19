@@ -22,6 +22,7 @@ __all__ = [
     'EnergyFilter', 'EnergyoutFilter', 'EnergyFunctionFilter', 'LegendreFilter',
     'MaterialFilter', 'MaterialFromFilter', 'MeshFilter', 'MeshBornFilter',
     'MeshMaterialFilter', 'MeshSurfaceFilter', 'MuFilter', 'MuSurfaceFilter',
+    'NoisePhaseFilter',
     'ParentNuclideFilter', 'ParticleFilter', 'ParticleProductionFilter', 'PolarFilter',
     'ReactionFilter', 'SphericalHarmonicsFilter', 'SpatialLegendreFilter',
     'SurfaceFilter', 'TimeFilter', 'UniverseFilter', 'WeightFilter', 'ZernikeFilter',
@@ -240,6 +241,10 @@ class ComplexPartFilter(Filter):
 
 class EnergyoutFilter(EnergyFilter):
     filter_type = 'energyout'
+
+
+class NoisePhaseFilter(Filter):
+    filter_type = 'noisephase'
 
 
 class AzimuthalFilter(Filter):
@@ -721,6 +726,7 @@ _FILTER_TYPE_MAP = {
     'cellinstance': CellInstanceFilter,
     'collision': CollisionFilter,
     'complexpart': ComplexPartFilter,
+    'noisephase': NoisePhaseFilter,
     'delayedgroup': DelayedGroupFilter,
     'distribcell': DistribcellFilter,
     'energy': EnergyFilter,

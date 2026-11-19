@@ -8,6 +8,7 @@ import traceback
 
 import lxml.etree as ET
 import warnings
+import numpy as np
 import openmc
 import openmc.checkvalue as cv
 from openmc.checkvalue import PathLike
@@ -295,6 +296,23 @@ class Settings:
         :cancellation_roulette:
             Whether the fission bank is rouletted (norm-based, using the
             weight cutoff) after mesh averaging (default True)
+        :perturbations:
+            List of cross-section perturbations sampled as the noise source
+            instead of the external source. Each is a dict with key
+            ``'cells'`` (iterable of :class:`openmc.Cell` or cell IDs) and
+            any of ``'total'``, ``'scatter'``, ``'fission'``: the complex
+            relative amplitudes :math:`\\delta\\Sigma_{x,g}/\\Sigma_{x,g}`,
+            a scalar or one value per group. Each batch runs static
+            generations (noise physics at zero frequency, fission divided by
+            ``keff``) from a source renormalised to ``particles`` sites; the
+            source is sampled at the collisions of the last one. The external
+            source only seeds the first static generation. Use
+            :class:`openmc.NoisePhaseFilter` to tally the static flux.
+        :nskip:
+            Static generations per batch, the last of which samples the
+            noise source (default 20)
+        :static_inactive:
+            Additional static generations before the first batch (default 50)
 
         .. versionadded:: 0.16.1
     run_mode : {'eigenvalue', 'fixed source', 'plot', 'volume', 'particle restart'}
@@ -1404,6 +1422,36 @@ class Settings:
                 cv.check_type('noise cancellation_mesh', value, MeshBase)
             elif key in ('cancellation_group', 'cancellation_roulette'):
                 cv.check_type(f'noise {key}', value, bool)
+            elif key == 'nskip':
+                cv.check_type('noise nskip', value, Integral)
+                cv.check_greater_than('noise nskip', value, 1, True)
+            elif key == 'static_inactive':
+                cv.check_type('noise static_inactive', value, Integral)
+                cv.check_greater_than('noise static_inactive', value, 0, True)
+            elif key == 'perturbations':
+                cv.check_type('noise perturbations', value, Iterable, Mapping)
+                for pert in value:
+                    for k, v in pert.items():
+                        if k == 'cells':
+                            cv.check_type('noise perturbation cells', v,
+                                          Iterable)
+                            for c in v:
+                                if not isinstance(c, (Integral, openmc.Cell)):
+                                    raise TypeError(
+                                        'Noise perturbation cells must be '
+                                        'cells or cell IDs')
+                        elif k in ('total', 'scatter', 'fission'):
+                            arr = np.atleast_1d(np.asarray(v))
+                            if arr.ndim != 1 or arr.size == 0 or \
+                                    not np.issubdtype(arr.dtype, np.number):
+                                raise TypeError(
+                                    f'Noise perturbation {k} must be a '
+                                    'complex scalar or one value per group')
+                        else:
+                            raise ValueError(
+                                f'Unknown noise perturbation key: {k}')
+                    if 'cells' not in pert:
+                        raise ValueError('A noise perturbation needs cells')
             else:
                 raise ValueError(f'Unknown noise key: {key}')
         self._noise = dict(noise)
@@ -2033,6 +2081,21 @@ class Settings:
         if self._noise:
             element = ET.SubElement(root, "noise")
             for key, value in self._noise.items():
+                if key == 'perturbations':
+                    for pert in value:
+                        pelem = ET.SubElement(element, 'perturbation')
+                        for k, v in pert.items():
+                            sub = ET.SubElement(pelem, k)
+                            if k == 'cells':
+                                sub.text = ' '.join(
+                                    str(c.id if isinstance(c, openmc.Cell)
+                                        else c) for c in v)
+                            else:
+                                arr = np.atleast_1d(np.asarray(v, complex))
+                                sub.text = ' '.join(
+                                    f'{float(z.real)!r} {float(z.imag)!r}'
+                                    for z in arr)
+                    continue
                 subelement = ET.SubElement(element, key)
                 if key == 'cancellation_mesh':
                     subelement.text = str(value.id)
@@ -2564,8 +2627,19 @@ class Settings:
         if elem is not None:
             noise = {}
             for child in elem:
-                if child.tag == 'max_generations':
+                if child.tag in ('max_generations', 'nskip',
+                                 'static_inactive'):
                     noise[child.tag] = int(child.text)
+                elif child.tag == 'perturbation':
+                    pert = {}
+                    for c in child:
+                        vals = c.text.split()
+                        if c.tag == 'cells':
+                            pert['cells'] = [int(x) for x in vals]
+                        else:
+                            x = np.array([float(t) for t in vals])
+                            pert[c.tag] = x[0::2] + 1j * x[1::2]
+                    noise.setdefault('perturbations', []).append(pert)
                 elif child.tag == 'cancellation_mesh':
                     mesh_id = int(child.text)
                     if meshes is None or mesh_id not in meshes:

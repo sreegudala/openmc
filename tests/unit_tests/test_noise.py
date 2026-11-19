@@ -140,3 +140,46 @@ def test_complex_tally_stats_requires_filter():
                    np.zeros((1, 1, 1)), None, 2)
     with pytest.raises(ValueError):
         openmc.noise.complex_tally_stats(t)
+
+
+def test_settings_noise_perturbations(run_in_tmpdir):
+    cell = openmc.Cell(cell_id=11)
+    s = openmc.Settings()
+    s.noise = {'frequency': 1.0, 'nskip': 3, 'static_inactive': 10,
+               'perturbations': [
+                   {'cells': [cell, 12], 'total': 1e-3 - 2e-4j},
+                   {'cells': [13], 'scatter': [0.01, 0.02j],
+                    'fission': [0.5, -0.25 + 1j]}]}
+    s.export_to_xml()
+    s2 = openmc.Settings.from_xml()
+    n = s2.noise
+    assert n['nskip'] == 3 and isinstance(n['nskip'], int)
+    assert n['static_inactive'] == 10
+    p0, p1 = n['perturbations']
+    assert p0['cells'] == [11, 12]
+    assert p0['total'] == pytest.approx([1e-3 - 2e-4j])
+    assert p1['scatter'] == pytest.approx([0.01, 0.02j])
+    assert p1['fission'] == pytest.approx([0.5, -0.25 + 1j])
+
+
+@pytest.mark.parametrize('noise', [
+    {'nskip': 0}, {'static_inactive': -1},
+    {'perturbations': [{'total': 1e-3}]},
+    {'perturbations': [{'cells': [1], 'bogus': 1.0}]},
+    {'perturbations': [{'cells': ['a']}]}])
+def test_settings_noise_perturbations_invalid(noise):
+    s = openmc.Settings()
+    with pytest.raises((ValueError, TypeError)):
+        s.noise = noise
+
+
+def test_noise_phase_filter_xml():
+    f = openmc.NoisePhaseFilter(filter_id=8)
+    assert list(f.bins) == ['static', 'noise']
+    elem = f.to_xml_element()
+    assert elem.get('type') == 'noisephase'
+    new = openmc.Filter.from_xml_element(elem)
+    assert isinstance(new, openmc.NoisePhaseFilter)
+    assert new.id == 8
+    with pytest.raises(ValueError):
+        openmc.NoisePhaseFilter(bins=['a', 'b'])
