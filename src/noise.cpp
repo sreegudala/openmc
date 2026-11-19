@@ -52,6 +52,16 @@ vector<double> gen_n_sites;
 vector<int64_t> gen_n_batches;
 vector<int> batch_generations;
 
+// Cancellation diagnostics accumulated over all generations and batches:
+// rendezvous count, sites entering cancellation, occupied bins, sum of |w|
+// before and after averaging, and sites removed by the bank roulette
+double cancel_n_rendezvous {0.0};
+double cancel_n_sites {0.0};
+double cancel_n_occupied {0.0};
+double cancel_abs_before {0.0};
+double cancel_abs_after {0.0};
+double cancel_n_removed {0.0};
+
 } // namespace
 
 void reset()
@@ -65,6 +75,12 @@ void reset()
   gen_n_sites.clear();
   gen_n_batches.clear();
   batch_generations.clear();
+  cancel_n_rendezvous = 0.0;
+  cancel_n_sites = 0.0;
+  cancel_n_occupied = 0.0;
+  cancel_abs_before = 0.0;
+  cancel_abs_after = 0.0;
+  cancel_n_removed = 0.0;
 }
 
 void initialize()
@@ -296,9 +312,14 @@ int64_t cancel_and_roulette(SharedArray<SourceSite>& bank, int64_t id_base)
   // Per-bin sums: re, im, count
   vector<double> sums(3 * n_bins, 0.0);
   vector<int64_t> bin(bank.size());
+  double abs_before = 0.0;
+  double abs_outside = 0.0;
   for (int64_t i = 0; i < bank.size(); ++i) {
+    double a = std::hypot(bank[i].wgt, bank[i].wgt_im);
+    abs_before += a;
     int b = mesh.get_bin(bank[i].r);
     if (b < 0) {
+      abs_outside += a;
       bin[i] = -1;
       continue;
     }
@@ -333,7 +354,8 @@ int64_t cancel_and_roulette(SharedArray<SourceSite>& bank, int64_t id_base)
       site.wgt_im = sums[3 * k + 1] / sums[3 * k + 2];
     }
     double w_abs = std::hypot(site.wgt, site.wgt_im);
-    if (w_abs < settings::weight_cutoff) {
+    if (settings::noise_cancellation_roulette &&
+        w_abs < settings::weight_cutoff) {
       uint64_t seed =
         init_seed(id_base + offset + i + 1, STREAM_URR_PTABLE);
       if (w_abs > 0.0 && settings::weight_survive * prn(&seed) < w_abs) {
@@ -347,6 +369,28 @@ int64_t cancel_and_roulette(SharedArray<SourceSite>& bank, int64_t id_base)
     bank[n_keep++] = site;
   }
   int64_t n_removed = bank.size() - n_keep;
+
+  // Diagnostics. Bin totals are already global; local counts are reduced.
+  double local[4] = {abs_before, static_cast<double>(bank.size()),
+    static_cast<double>(n_removed), abs_outside};
+#ifdef OPENMC_MPI
+  MPI_Allreduce(MPI_IN_PLACE, local, 4, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+#endif
+  double abs_after = local[3];
+  double occupied = 0.0;
+  for (int64_t k = 0; k < n_bins; ++k) {
+    if (sums[3 * k + 2] > 0.0) {
+      abs_after += std::hypot(sums[3 * k], sums[3 * k + 1]);
+      occupied += 1.0;
+    }
+  }
+  cancel_n_rendezvous += 1.0;
+  cancel_abs_before += local[0];
+  cancel_n_sites += local[1];
+  cancel_n_removed += local[2];
+  cancel_abs_after += abs_after;
+  cancel_n_occupied += occupied;
+
   bank.resize(n_keep);
   return n_removed;
 }
@@ -467,6 +511,14 @@ void write_statepoint(hid_t file_id)
   write_dataset(g, "gen_sum_wgt_im", gen_sum_wgt_im);
   write_dataset(g, "gen_n_sites", gen_n_sites);
   write_dataset(g, "gen_n_batches", gen_n_batches);
+  if (settings::noise_cancellation_mesh != C_NONE) {
+    write_dataset(g, "cancel_n_rendezvous", cancel_n_rendezvous);
+    write_dataset(g, "cancel_n_sites", cancel_n_sites);
+    write_dataset(g, "cancel_n_occupied", cancel_n_occupied);
+    write_dataset(g, "cancel_abs_before", cancel_abs_before);
+    write_dataset(g, "cancel_abs_after", cancel_abs_after);
+    write_dataset(g, "cancel_n_removed", cancel_n_removed);
+  }
   close_group(g);
 }
 

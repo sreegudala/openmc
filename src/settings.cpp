@@ -93,6 +93,7 @@ int noise_max_generations {100000};
 double noise_growth_limit {100.0};
 int noise_cancellation_mesh {C_NONE};
 bool noise_cancellation_group {true};
+bool noise_cancellation_roulette {true};
 bool weight_windows_on {false};
 bool weight_window_checkpoint_surface {false};
 bool weight_window_checkpoint_collision {true};
@@ -1427,6 +1428,10 @@ void read_noise_settings(pugi::xml_node node)
   if (check_for_node(node, "cancellation_group")) {
     noise_cancellation_group = get_node_value_bool(node, "cancellation_group");
   }
+  if (check_for_node(node, "cancellation_roulette")) {
+    noise_cancellation_roulette =
+      get_node_value_bool(node, "cancellation_roulette");
+  }
   if (check_for_node(node, "max_generations")) {
     noise_max_generations = std::stoi(get_node_value(node, "max_generations"));
     if (noise_max_generations < 1)
@@ -1476,6 +1481,7 @@ void free_memory_settings()
   settings::noise_max_generations = 100000;
   settings::noise_cancellation_mesh = C_NONE;
   settings::noise_cancellation_group = true;
+  settings::noise_cancellation_roulette = true;
   settings::noise_growth_limit = 100.0;
 }
 

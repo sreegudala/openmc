@@ -100,6 +100,7 @@ extern int noise_max_generations; //!< cap on fission generations per batch
 extern double noise_growth_limit; //!< abort when sum|w| grows by this factor
 extern int noise_cancellation_mesh;   //!< mesh index for weight cancellation
 extern bool noise_cancellation_group; //!< also bin cancellation on group?
+extern bool noise_cancellation_roulette; //!< roulette the bank after averaging?
 extern bool weight_windows_on;         //!< are weight windows are enabled?
 extern bool weight_window_checkpoint_surface;   //!< enable weight window check
                                                 //!< upon surface crossing?

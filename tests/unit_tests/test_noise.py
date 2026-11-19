@@ -24,19 +24,22 @@ def test_settings_noise_cancellation_mesh(run_in_tmpdir):
     mesh.dimension = (4, 4, 1)
     s = openmc.Settings()
     s.noise = {'frequency': 10.0, 'cancellation_mesh': mesh,
-               'cancellation_group': False, 'growth_limit': 20.0}
+               'cancellation_group': False, 'cancellation_roulette': False,
+               'growth_limit': 20.0}
     s.export_to_xml()
     s2 = openmc.Settings.from_xml()
     assert s2.noise['cancellation_mesh'].id == mesh.id
     assert tuple(s2.noise['cancellation_mesh'].dimension) == (4, 4, 1)
     assert s2.noise['cancellation_group'] is False
+    assert s2.noise['cancellation_roulette'] is False
     assert s2.noise['growth_limit'] == 20.0
 
 
 @pytest.mark.parametrize('noise', [
     {'frequency': -1.0}, {'eta': 0.0}, {'keff': -1.0},
     {'max_generations': 0}, {'bogus': 1.0}, {'growth_limit': 1.0},
-    {'cancellation_mesh': 3}, {'cancellation_group': 'yes'}])
+    {'cancellation_mesh': 3}, {'cancellation_group': 'yes'},
+    {'cancellation_roulette': 1}])
 def test_settings_noise_invalid(noise):
     s = openmc.Settings()
     with pytest.raises((ValueError, TypeError)):

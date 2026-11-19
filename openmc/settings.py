@@ -292,6 +292,9 @@ class Settings:
         :cancellation_group:
             Whether cancellation bins also distinguish the outgoing energy
             group of the fission site (default True)
+        :cancellation_roulette:
+            Whether the fission bank is rouletted (norm-based, using the
+            weight cutoff) after mesh averaging (default True)
 
         .. versionadded:: 0.16.1
     run_mode : {'eigenvalue', 'fixed source', 'plot', 'volume', 'particle restart'}
@@ -1399,8 +1402,8 @@ class Settings:
                 cv.check_greater_than('noise growth_limit', value, 1.0)
             elif key == 'cancellation_mesh':
                 cv.check_type('noise cancellation_mesh', value, MeshBase)
-            elif key == 'cancellation_group':
-                cv.check_type('noise cancellation_group', value, bool)
+            elif key in ('cancellation_group', 'cancellation_roulette'):
+                cv.check_type(f'noise {key}', value, bool)
             else:
                 raise ValueError(f'Unknown noise key: {key}')
         self._noise = dict(noise)
@@ -2569,7 +2572,8 @@ class Settings:
                         raise ValueError(
                             f'Could not locate mesh with ID "{mesh_id}"')
                     noise[child.tag] = meshes[mesh_id]
-                elif child.tag == 'cancellation_group':
+                elif child.tag in ('cancellation_group',
+                                   'cancellation_roulette'):
                     noise[child.tag] = child.text.strip().lower() in (
                         'true', '1')
                 else:
