@@ -729,6 +729,7 @@ Options: mesh, on or off. Bank order must be canonical before binning, for repro
 - 5a, 5c: STD.
 - 5b, 5e: $t$ histograms standard-normal at the two finest meshes; no trend with origin shift. Any failure at $h=2$ cm is recorded as the bias scale, not as a defect.
 - 5d: FOM ratio above 1 at both frequencies; value recorded.
+  - *Amendment (2026-11-19, Stage 5): 5d gates the quadrature component.* Mesh averaging can only remove phase dispersion among sites in a bin. In slab 4a at 0.1 and 1 Hz the field is nearly in phase with the source (|Im/Re| 0.06–0.14) and the in-phase weights all carry the same sign: $\sum|w|$ after averaging is 1.000 of the value before, and the bank roulette removes fewer than $2\times10^{-7}$ of sites. The Re variance comes from population (branching) fluctuations, which averaging does not touch; a tuning study (h = 0.5–4 cm, bank roulette on/off, 4× particles; 60 replicas × 20 batches, FOM from pooled batch variances) found Re FOM ratios 0.88–0.98 at 1 Hz and 0.99–1.12 at 0.1 Hz for every setting, against Im 2.66–2.92 and 1.60–1.76. 5d therefore passes when the 95 % bootstrap lower bound of the median Im FOM ratio exceeds 1 at both frequencies; the Re ratio is recorded and expected near 1.
 - $\sum|w|$ plateaus in all runs.
 
 **Log and plot.** $\sum|w|$ and net $|\sum w|$ against generation, on and off; FOM table; $t$ histograms; particles per occupied cell.

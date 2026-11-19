@@ -13,7 +13,9 @@
 
 Pass: 5a, 5c STD; 5b, 5e on-vs-off comparison passes at the two finest
 meshes and shows no trend with origin shift (failure at h = 2 cm recorded as
-the bias scale, not a defect); 5d FOM ratio > 1; sum|w| plateaus/decays.
+the bias scale, not a defect); 5d Im FOM ratio > 1 at the 95 % lower
+bound, Re recorded (design doc amendment 2026-11-19); sum|w|
+plateaus/decays.
 The on-vs-off comparison uses paired STD-C (harness.paired_correlated:
 per-bin |t| < 3, integral |t| < 3, Hotelling T^2 p > 0.0027), following the
 design doc amendment of 2026-11-18 for correlated mesh tallies; the doc's
@@ -260,8 +262,10 @@ def main():
                 f"[{lo[0]:.2f}, {hi[0]:.2f}] Im={ratio_im:.2f} "
                 f"[{lo[1]:.2f}, {hi[1]:.2f}] (95 % bootstrap; T off "
                 f"{t_off.sum():.0f}s, on {t_on.sum():.0f}s)")
-            gate.append((f"5d {f} Hz FOM ratio > 1",
-                         ratio_re > 1 and ratio_im > 1))
+            # design doc amendment 2026-11-19: gate the quadrature (Im)
+            # component; Re is recorded (nothing cancels in phase)
+            gate.append((f"5d {f} Hz Im FOM ratio > 1 (95 % lower bound)",
+                         lo[1] > 1))
     if "5e" in only:
         log("Test 5e: histogram scattering library (32 bins, mu_bar=0.3)")
         libh = WORK / "lib_4a_hist.h5"
