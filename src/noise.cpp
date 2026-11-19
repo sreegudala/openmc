@@ -371,12 +371,12 @@ int64_t cancel_and_roulette(SharedArray<SourceSite>& bank, int64_t id_base)
   int64_t n_removed = bank.size() - n_keep;
 
   // Diagnostics. Bin totals are already global; local counts are reduced.
-  double local[4] = {abs_before, static_cast<double>(bank.size()),
+  double diag[4] = {abs_before, static_cast<double>(bank.size()),
     static_cast<double>(n_removed), abs_outside};
 #ifdef OPENMC_MPI
-  MPI_Allreduce(MPI_IN_PLACE, local, 4, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
+  MPI_Allreduce(MPI_IN_PLACE, diag, 4, MPI_DOUBLE, MPI_SUM, mpi::intracomm);
 #endif
-  double abs_after = local[3];
+  double abs_after = diag[3];
   double occupied = 0.0;
   for (int64_t k = 0; k < n_bins; ++k) {
     if (sums[3 * k + 2] > 0.0) {
@@ -385,9 +385,9 @@ int64_t cancel_and_roulette(SharedArray<SourceSite>& bank, int64_t id_base)
     }
   }
   cancel_n_rendezvous += 1.0;
-  cancel_abs_before += local[0];
-  cancel_n_sites += local[1];
-  cancel_n_removed += local[2];
+  cancel_abs_before += diag[0];
+  cancel_n_sites += diag[1];
+  cancel_n_removed += diag[2];
   cancel_abs_after += abs_after;
   cancel_n_occupied += occupied;
 
