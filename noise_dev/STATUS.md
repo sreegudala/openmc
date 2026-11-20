@@ -13,40 +13,18 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 3 | Fission with $1/k$, delayed neutrons, generation loop, growth guard | **Passed** | `stage3/stage3_gate.md` |
 | 4 | Space dependence (slabs vs $S_N$) | **Passed** (9/9); STD-C criterion introduced | `stage4/stage4_gate.md` |
 | 5 | Weight cancellation | **Passed**; 5d gated on Im FOM (amendment) | `stage5/stage5_gate.md` |
-| 6 | Sampled noise source from $\delta\Sigma$ perturbations | **In progress**: 6a/6b pass (22/22), 6c waiting for Abeille | `stage6/stage6_log_6a_6b_nskip.md` |
+| 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **In progress**: N1/N2 done (unit tests pass). N3a/N3b pass 6/6 (job 3598276), but N3b has low power (σ 1–4 %); follow-up at 4× particles plus a forward control. N3c: weight windows are not complex-safe and noise mode now refuses them | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20) | Not started | |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
-
-## Current work: Stage 6c (CORTEX assembly at 1 Hz vs Abeille)
-
-- **OpenMC:** done. TACC job 3596962, 20 replicas × 600 batches × 20000
-  particles, cancellation mesh 68×68. Output in `stage6/stage6c_openmc.npz`
-  (not committed, 18 MB).
-  - The static flux shape matches Abeille's to a median 0.06% (worst cell
-    0.9%).
-  - The peak noise response is in the perturbed pin, so the orientation is
-    right.
-  - Per-cell σ of the mean is 1.2%, about the same as the assembly
-    integral's. The field is dominated by one global (point-kinetic) shape.
-- **Abeille:** running. TACC job 3596959 started 2026-11-19 15:16 CST, 20
-  replicas × 600 batches × 1e5 particles, about 10–11 h per replica,
-  21 h cap. The Abeille static normalisation is committed
-  (`stage6/stage6c_abeille_static.npz`).
-- **Next:** rsync `stage6c_abeille.npz` → `python stage6/run_stage6c.py analyze`
-  → `stage6/stage6_gate.md` → commit.
-  - The gate is a two-sample STD-C per group on cells above 10% of max,
-    plus a 2% modulus check on the assembly integral and the perturbed pin.
-  - Each code is about 1.2% uncertain, so the 2% check is only about 1.5σ
-    wide and a miss may need more batches before calling it a bias.
 
 ## Next: Stage 7 preparation (brief `briefs/noise_stage7_brief.md`)
 
 - TACC job: N3b at 4× particles with fresh seeds, plus N3f, the forward
   control on the same material, to get the forward/adjoint FOM ratio
   (`run_stage7_prep.py --only n3b,n3f --particles 80000`).
-- Then Stage 7 proper (7a–7f), after 6c closes.
+- Then Stage 7 proper (7a–7f).
 
 ## Open items and known limitations
 
@@ -97,6 +75,12 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-20: **Stage 6 gate passed.** 6c (CORTEX at 1 Hz) vs Abeille
+  (job 3596959, 20 replicas, 219–230 batches each at the 21 h cap):
+  two-sample STD-C passes in both groups (Hotelling p 0.63, max |z| 1.4).
+  The OpenMC modulus is 1.1–1.5 % below Abeille's, 0.6 combined σ; the
+  2 % check passes but only resolves about ±5 %, because Abeille's σ is
+  2.2 %. The spatial pattern agrees to 0.3 %, the phase to 0.14 deg.
 - 2026-11-20: Stage 7 prep gate run (TACC 3598276): N3a and N3b pass 6/6.
   N3a is precise: 0.15 % amplitude at 100 Hz. N3b's σ is 1–4 %, too large
   to test the 2 % tolerance. N3x (infinite variance) fails as predicted:
