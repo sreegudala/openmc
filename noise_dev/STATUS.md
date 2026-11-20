@@ -14,7 +14,7 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 4 | Space dependence (slabs vs $S_N$) | **Passed** (9/9); STD-C criterion introduced | `stage4/stage4_gate.md` |
 | 5 | Weight cancellation | **Passed**; 5d gated on Im FOM (amendment) | `stage5/stage5_gate.md` |
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **In progress**: 6a/6b pass (22/22), 6c waiting for Abeille | `stage6/stage6_log_6a_6b_nskip.md` |
-| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **In progress**: N1/N2 done (unit tests pass); N3a/N3b gate run pending on TACC; N3c audit: weight windows not complex-safe | `stage7/stage7_prep_log.md` |
+| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **In progress**: N1/N2 done (unit tests pass). N3a/N3b pass 6/6 (job 3598276), but N3b has low power (σ 1–4 %); follow-up at 4× particles plus a forward control. N3c: weight windows are not complex-safe and noise mode now refuses them | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20) | Not started | |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
@@ -43,8 +43,10 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Next: Stage 7 preparation (brief `briefs/noise_stage7_brief.md`)
 
-- TACC job: `stage7/run_stage7_prep.py` (N3a and N3b against
-  `ref_inf.py`'s adjoint, plus the informational N3x).
+- TACC job: N3b at 4× particles with fresh seeds, plus N3f, the forward
+  control on the same material, to get the forward/adjoint FOM ratio
+  (`run_stage7_prep.py --only n3b,n3f --particles 80000`).
+- Then Stage 7 proper (7a–7f), after 6c closes.
 
 ## Open items and known limitations
 
@@ -95,6 +97,10 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-20: Stage 7 prep gate run (TACC 3598276): N3a and N3b pass 6/6.
+  N3a is precise: 0.15 % amplitude at 100 Hz. N3b's σ is 1–4 %, too large
+  to test the 2 % tolerance. N3x (infinite variance) fails as predicted:
+  means 8–10 % low, |z| up to 14. Abeille 6c still running (21 h cap).
 - 2026-11-20: noise mode refuses weight windows (fatal error) until N3c
   is designed.
 - 2026-11-20: Stage 7 brief N1 and N2 done. The TRIGA transposition was

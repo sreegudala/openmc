@@ -19,6 +19,10 @@ N3b  fission and six delayed families: adjoint_noise_lib (transposed
      production matrices), noise keff = k_inf of the material; 1 Hz
      (plateau), 30 Hz (break), 100 Hz (above, eta 3), eta 1 otherwise.
 
+N3f  forward control, gated like N3b: the same material and frequencies
+     run forward (forward library, thermal unit source, reference
+     ref_inf.solve forward). Gives the forward/adjoint FOM ratio on one
+     material.
 N3x  informational, not gated: the first candidate material, whose
      transpose (multiplicity 2.4, thermal self-transfer probability 0.35)
      has second-moment radius 2.05, i.e. infinite variance. Fission-free,
@@ -141,6 +145,15 @@ def main():
         for f, eta in ((1.0, 1.0), (30.0, 1.0), (100.0, 3.0)):
             ref = inf_solve(mat, 2 * np.pi * f, R, k=k, adjoint=True)[::-1]
             e = s3.run_case(f"n3b_{f:g}Hz", mat, adj, f, eta, k, ref, args,
+                            results, src_group=2)
+            gate.append((e["label"], e["ok"]))
+
+    if "n3f" in only:
+        k, _ = static_k(mat)
+        log("Test N3f: forward control on the N3 material (forward library)")
+        for f, eta in ((1.0, 1.0), (30.0, 1.0), (100.0, 3.0)):
+            ref = inf_solve(mat, 2 * np.pi * f, R, k=k)[::-1]
+            e = s3.run_case(f"n3f_{f:g}Hz", mat, fwd, f, eta, k, ref, args,
                             results, src_group=2)
             gate.append((e["label"], e["ok"]))
 

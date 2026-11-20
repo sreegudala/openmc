@@ -231,4 +231,41 @@ test: `tests/unit_tests/test_noise.py::test_noise_refuses_weight_windows`.
 
 ## Gate-run results
 
-Pending: the TACC job, `stage7_prep_log_n3a_n3b_n3x.md`.
+TACC LS6 job 3598276, commit dc5189570, 20 replicas × 20000 particles × 20
+batches, seeds 1 + 7919 r. Log: `stage7_prep_log_n3a_n3b_n3x.md`.
+**6/6 gated checks pass** (STD, both estimators). Pooled z over the gated
+cases: n = 72, mean +0.25, std 1.06, no |z| ≥ 3.
+
+| Case | max \|z\| (tl, col) | rel σ of mean (thermal) | amplitude check | notes |
+|---|---|---|---|---|
+| N3a 100 Hz | 1.86, 1.66 | 0.02 % | 0.15 % (3 bins evaluated) | phase 0.01 deg |
+| N3a 3 kHz | 1.14, 1.73 | 0.9 % | 0.6 % (2 bins) | phase ≤ 0.47 deg |
+| N3a 10 kHz (η 3) | 1.21, 1.43 | 4.4 % | not evaluated (σ too large) | |
+| N3b 1 Hz | 2.09, 2.09 | 1.1 % | not evaluated | 725 gens/batch |
+| N3b 30 Hz | 1.34, 1.32 | 1.8 % | not evaluated | 1718 gens/batch |
+| N3b 100 Hz (η 3) | 0.63, 0.62 | 3.7 % | not evaluated | 5055 gens/batch (max 19358) |
+| N3x 100 Hz (not gated) | 13.95, 8.58 | — | — | infinite variance, as predicted |
+
+**N3a** passes, with high precision at the plateau and the break: the
+copied transposition with multiplicity 2.4 transports the adjoint
+correctly, complex weights included.
+
+**N3b** passes STD but with **low power**.
+- The replica distributions are clean: no outliers, largest deviation ~2σ
+  of the replica spread.
+- The relative σ of the mean is 1.1–3.7 %, about 4–10 times that of the
+  forward Stage 3b at the same particle count. The design doc's 2 %
+  amplitude tolerance was therefore never evaluated.
+- The z-test alone excludes amplitude biases above about 3 %, 5 % and 11 %
+  at 1, 30 and 100 Hz.
+- Follow-up before 7a (which promotes N3b to a gate):
+  - N3f, the forward run on the same material, tells whether the adjoint
+    game is intrinsically noisier or the material is just expensive. An
+    adjoint fast-group collision yields νΣf′/(Σ̃t k) ≈ 2.5 sites, and 100 Hz
+    needs 2.3 times the generations of Stage 3b.
+  - N3b at 4× particles with fresh seeds.
+
+**N3x** behaves as the second-moment radius (2.05) predicts.
+- 5–6 of 6 bins fail, with max |z| 14 (track length) and 8.6 (collision).
+- The means are 8–10 % low in every group, the direction of the TRIGA
+  weight-tail bias: rare high-weight histories carry the missing mean.
