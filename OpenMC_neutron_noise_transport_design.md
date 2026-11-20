@@ -760,23 +760,52 @@ Options: mesh, on or off. Bank order must be canonical before binning, for repro
 
 ### Stage 7 — Adjoint noise and reciprocity
 
-**Change.** `noise.adjoint = true` runs the same walk on the transposed library:
+*Amendment (2026-11-20, brief `noise_dev/briefs/noise_stage7_brief.md`, N4). This replaces the original Change and Tests of this stage; the original text is in git history (commit 255bb94f5).*
 
-- Transposed scatter with the row-sum ratio in the multiplicity.
-- At an adjoint fission in collision group $g'$, branch between prompt and delayed family $k$ with probabilities proportional to $\chi_{p,g'}(1-\beta)$ and $\chi_{d,k,g'}\beta_k$. Multiply delayed branches by $\lambda_k/(\lambda_k+i\omega)$. Sample the outgoing group proportional to $\nu\Sigma_{f,g}$, with the overall yield carrying $1/k$. This rule is a derivation from the adjoint equation of Section 1.4.
-- Same $+i\omega/v_g$ and the same copy reaction.
-- Document the bilinear convention. An option reports the conjugate for users of the sesquilinear form.
-- Adjoint source: isotropic, proportional to $\Sigma_{d,g}$ in the detector region.
+**Convention.** The detector signal is the bilinear form
+
+$$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{-1}\delta S(\omega)=\chi(\omega)^\mathsf T\delta S(\omega),\qquad \mathcal L(\omega)^\mathsf T\chi=R .$$
+
+- The adjoint run uses the transposed library at the **same** $+\omega$, with $R$ as a real external source. Nothing is conjugated in the run.
+- Users of the sesquilinear product $\langle a,b\rangle=\sum a^*b$ get $\psi^\dagger=\chi^*$. Conjugation happens only in post-processing.
+- This is the bilinear convention of Section 1.4. No part of this plan runs the adjoint at $-\omega$; the $-\omega$ form there is the sesquilinear alternative.
+
+**Change.** The transport code does not change. The adjoint is the forward noise solver run on a transposed library:
+
+- **Scattering.** Built by the ce_mg_triga transposition, copied verbatim into `noise_dev/common/adjoint_lib.py` with a sync test.
+  - The nu-scatter matrix is transposed and keeps each transfer's μ histogram.
+  - Absorption becomes $\Sigma_a'=\max(0,\Sigma_t-\text{in-scatter})$.
+  - The row multiplicity is $c_g=\text{in-scatter}_g/(\Sigma_t-\Sigma_a')_g$.
+- **Fission and delayed data.** Added by `noise_dev/common/adjoint_noise_lib.py` as transposed production matrices (`prompt-nu-fission` $[g_\text{in},g_\text{out}]$, `delayed-nu-fission` $[k,g_\text{in},g_\text{out}]$).
+  - OpenMC's existing MG matrix reader and `sample_fission_energy` then do what the original Stage 7 text derived: the family is chosen in proportion to the transposed row sums, and the outgoing group in proportion to $\nu\Sigma_{f,g}$.
+  - The delayed factor $\lambda_k/(\lambda_k+i\omega)$ is a scalar per family and is applied unchanged.
+  - Inverse velocity, decay rates and $\Sigma_t$ are copied.
+- **Normalisation.** The adjoint source follows the ce_mg_triga convention $S_i=V_i\Sigma_{R,i}$, so that the columns of $G(\omega)$ compare with the static $G$ at $\omega\to0$.
+- **Variance.** A transposed library with $c_g>1$ can have an infinite second moment: `adjoint_noise_lib.second_moment_radius` $\ge1$. Example N3x in `stage7/stage7_prep_log.md`: radius 2.05, and the estimators disagree. Test materials must have a radius below 1. Larger radii, as in the TRIGA library, need weight windows, which do not yet work in noise mode (N3c).
 
 **Tests.**
 
-- **7a.** One-group cases 3b and 4a in adjoint mode equal the forward results (one-group transport with isotropic scattering is symmetric under the bilinear transpose). STD.
-- **7b.** Two-group infinite medium against the transposed solve in `ref_inf.py`. F7.
-- **7c, reciprocity.** A two-group slab with a 20 cm reflector slab of CORTEX water on each side of a CORTEX-fuel core sized by `ref_sn1d.py`. Source region $V_s$: 1 cm in the core, isotropic, spectrum $s=(0,1)$. Detector region $V_d$: 2 cm in the reflector, 15 cm from the core edge, with $\Sigma_d=(0,1)$. Forward: tally $\int_{V_d}\Sigma_d\,\delta\phi$. Adjoint: tally $\sum_gs_g\int_{V_s}\delta\phi^\dagger_g$. Both are scalar-flux tallies, so the comparison is exact. Frequencies 0.1, 1, 10, 100 Hz. Also compare both with `ref_sn1d.py` forward and adjoint.
-- **7d.** Running the adjoint at $-\omega$ returns the complex conjugate within statistics.
-- **7e.** Case 7c with the histogram-anisotropic library of 5e.
+- **7a, infinite medium, full operator.**
+  - The adjoint from the N2 library against `ref_inf.py`'s adjoint (`adjoint=True`), with delayed neutrons on.
+  - The 3-group material of `stage7/run_stage7_prep.py` (transposed multiplicity 2.4) and the 2-group CORTEX fuel.
+  - Frequencies 0.1, 1, 10, 30 and 100 Hz.
+  - Amplitude and phase. This is N3b promoted to a gate.
+- **7b, slab reciprocity, external source.** A Stage 4 slab: 4b, two groups, so that the transpose is not trivial.
+  - $\delta S$ is a known external source in one cell and $R$ is a detector region.
+  - Compare the forward $\delta d=R^\mathsf T\delta\phi$ with the adjoint $\chi^\mathsf T\delta S$, where $\chi$ comes from an adjoint run with source $R$. Use the two-sample test on replicas.
+  - Frequencies below the slab's point-kinetic break, at it and above it.
+  - Low-frequency sanity check: as $\omega\to0$, with no delayed neutrons and on a subcritical fixed-source version of the slab, the adjoint noise solution approaches a static adjoint run with the same transposed library.
+- **7c, reciprocity with a sampled source.** Stage 6's perturbation, $\delta S=-\delta\mathcal L\,\phi_0$.
+  - **Absorber first** (capture and total only): the scalar static flux in the perturbed cells is enough for the contraction.
+  - **Then a scattering perturbation.** It needs the P0 and P1 angular moments of $\phi_0$ and $\chi$. Copy the contraction verbatim from `ce_mg_triga/step5e_pool_pt.py`, with a header and the source commit, as for N1. $\chi$ is now complex; keep the same sign convention and the factor 3 in the P1 term.
+- **7d (optional), $S_N$ cross-check.** If `ref_sn1d.py` solves the transposed problem, use it as an independent adjoint reference for the 7b slab.
+- **7e.** Kept from the original plan: the adjoint at $-\omega$ returns the complex conjugate of the adjoint at $+\omega$, within statistics.
+- **7f.** Kept from the original plan: case 7b with the histogram-anisotropic library of 5e.
 
-**Pass.** STD between forward and adjoint (7c, 7e), between each and the script, and for 7a, 7b, 7d.
+**Pass.** These are the existing criteria:
+- STD against the references (7a, 7d, 7e);
+- the two-sample test between forward and adjoint (7b, 7c, 7f);
+- STD-C where the tallies are correlated.
 
 **Log and plot.** $\delta\phi^\dagger_g(x)$ amplitude and phase, which is the transfer map $G(\omega)$ for that detector; FOM of forward against adjoint for the detector response; penetration statistics (particles reaching $V_d$ per source particle).
 

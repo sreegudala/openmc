@@ -90,6 +90,8 @@ def gen_ratio(S, nb, start=5, min_batches=None):
     """Fit log(S_g) vs g where all batches still reach g (or at least half)."""
     S = np.asarray(S)
     nb = np.asarray(nb)
+    if S.size == 0:            # no fission generations (fission-free)
+        return np.nan, 0
     nmax = nb[0]
     # use generations that every batch still reaches, so the sum over
     # batches is an unbiased estimate of E[sum|w|_g] without truncation

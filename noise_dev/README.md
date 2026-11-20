@@ -34,6 +34,9 @@ tracked in [`STATUS.md`](STATUS.md).
     chosen cells. Each batch runs `nskip` static generations, and the last
     of these banks complex source sites at its collisions in perturbed
     cells.
+- **Adjoint.** The adjoint (bilinear convention: transposed operator at the
+  same +ω) is the same solver run on a transposed library built by
+  `common/adjoint_noise_lib.py`. The transport code does not change.
 - **Tallies.** `ComplexPartFilter` splits each score into Re and Im bins. A
   cross-product accumulator gives the Re–Im covariance, so amplitude and
   phase uncertainties are available through `openmc.noise.complex_tally_stats`.
@@ -90,6 +93,9 @@ neutrons. Noise mode is multigroup only.
 | `reference/` | Independent NumPy references. `ref_g0.py`: point-kinetic $G_0(\omega)$ and cut-offs. `ref_inf.py`: multigroup infinite medium, forward and adjoint. `ref_sn1d.py`: 1-D slab $S_N$ static and noise solver. `ref_diff1d.py`: slab diffusion Green's function. `noise_common.py`: shared data. |
 | `common/harness.py` | Runs 20 independent replicas (concurrently on TACC). Implements the pass criteria: STD, STD-C (Hotelling $T^2$ on principal components for correlated mesh tallies), the paired on/off test, the two-sample test against another Monte Carlo code, and FOM. |
 | `common/build.py` | Builders for multigroup libraries, slab models, sources and meshes. |
+| `common/adjoint_lib.py` | Verbatim copy of the ce_mg_triga library transposition (scattering only, fission removed). Do not edit it here; `test_adjoint_lib.py` and `fixtures/adjoint_lib/` keep it in sync. |
+| `common/adjoint_noise_lib.py` | Transposed library for the adjoint noise operator: adds transposed prompt and delayed production matrices to the copy. Also gives the effective operator OpenMC transports and the second-moment diagnostic. |
+| `briefs/` | Task briefs from the user (e.g. `noise_stage7_brief.md`). |
 | `stageN/run_stageN.py` | Stage driver: builds the cases, runs the replicas, scores against the references, writes `stageN_log_*.md`. |
 | `stageN/stageN_gate.md` | Gate record: which runs count, disposition of any misses, and the verdict. |
 | `stage6/cortex.py`, `run_stage6c.py` | The CORTEX assembly benchmark and the comparison with Abeille. |

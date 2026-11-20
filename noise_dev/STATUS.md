@@ -1,6 +1,6 @@
 # Status
 
-Updated: 2026-11-19.
+Updated: 2026-11-20.
 Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Stages
@@ -14,7 +14,8 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 4 | Space dependence (slabs vs $S_N$) | **Passed** (9/9); STD-C criterion introduced | `stage4/stage4_gate.md` |
 | 5 | Weight cancellation | **Passed**; 5d gated on Im FOM (amendment) | `stage5/stage5_gate.md` |
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **In progress**: 6a/6b pass (22/22), 6c waiting for Abeille | `stage6/stage6_log_6a_6b_nskip.md` |
-| 7 | Adjoint noise and reciprocity | Not started | |
+| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **In progress**: N1/N2 done (unit tests pass); N3a/N3b gate run pending on TACC; N3c audit: weight windows not complex-safe | `stage7/stage7_prep_log.md` |
+| 7 | Adjoint noise and reciprocity (amended 2026-11-20) | Not started | |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
@@ -40,17 +41,36 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
   - Each code is about 1.2% uncertain, so the 2% check is only about 1.5σ
     wide and a miss may need more batches before calling it a bias.
 
+## Next: Stage 7 preparation (brief `briefs/noise_stage7_brief.md`)
+
+- TACC job: `stage7/run_stage7_prep.py` (N3a and N3b against
+  `ref_inf.py`'s adjoint, plus the informational N3x).
+- Approval needed: should noise mode refuse weight windows (fatal error)
+  until N3c is implemented?
+
 ## Open items and known limitations
+
+- **N3c, weight windows in noise mode.** They apply but are wrong for
+  complex weights: Re-only comparisons, the cutoff kills every Re w < 0, and
+  split copies drop Im (`stage7/stage7_prep_log.md`). A fix needs a
+  design-doc amendment first. Stage 9b needs windows to reach the
+  out-of-core detectors.
+- **Variance of transposed libraries.** A multiplicity above 1 can make the
+  second moment infinite (`adjoint_noise_lib.second_moment_radius` ≥ 1; N3x
+  has 2.05). Check this for every adjoint test material; the TRIGA library
+  will need windows (N3c).
+- **N5, shared TRIGA library.** Regenerate the CASMO-70 library once in
+  ce_mg_triga (`step1d_mgxs.py`) with inverse velocity, delayed
+  nu-fission and χ_d per family, β and tallied λ_k. Both projects then use
+  it, transposed by N1 + N2. When it arrives:
+  - check forward and transposed MG k against CE;
+  - check the low-ω response against G₀ with the IFP β_eff and Λ_eff.
 
 - **MPI.** The local build has no MPI.
   - Stage 1d's 1-vs-4-rank check has not been run.
   - The sampled noise source refuses more than one MPI process (fatal
     error).
   - Runs use threads plus concurrent replicas instead.
-- **Stage 9b library.** The CASMO-70 TRIGA library lacks
-  `inverse-velocity`, `decay-rate` and all delayed data. It must be
-  regenerated before 9b, and the λ_k need tallying (Keepin values are used
-  meanwhile).
 - **FEMFFUSION** is not built (needs deal.II, PETSc and SLEPc). Its
   cross-checks in 4b, 6c and 9a are informational; 9a's gate depends on it.
 - **Stage 8 geometry.** The vibrating-pin orientation differs between the
@@ -72,9 +92,17 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 |---|---|---|
 | 2026-11-18 | 4 | STD-C for correlated mesh tallies: integral z plus Hotelling $T^2$ on principal components replaces the z-histogram test |
 | 2026-11-19 | 5 | 5d gates the Im FOM ratio; mesh averaging cannot reduce Re variance when weights are in phase |
+| 2026-11-20 | 7 | Bilinear convention (transposed library at +ω, conjugation only in post-processing); adjoint = forward solver on the N1 + N2 transposed library (no code change); tests 7a–7f redefined per the brief |
 
 ## Log
 
+- 2026-11-20: Stage 7 brief N1 and N2 done. The TRIGA transposition was
+  copied verbatim with a sync test, and the noise extension uses the matrix
+  fission form. Unit tests pass: transposing twice is the identity, k is
+  equal, and OpenMC transports exactly Aᵀ. N3 audits are written up: the
+  noise game is complex-safe under multiplicity, weight windows are not, and
+  a transposed library can have infinite variance. The Stage 7 amendment is
+  in the design doc. The N3a/N3b gate run goes to TACC.
 - 2026-11-19: Stage 6a/6b results committed (22/22). 6c OpenMC side done;
   Abeille built on TACC (node-local build) and running.
 - 2026-11-19: Stage 5 gate passed.
