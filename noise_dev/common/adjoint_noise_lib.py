@@ -53,6 +53,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adjoint_lib  # noqa: E402
+import pt_lib  # noqa: E402
 
 
 def _normalised(x, axis=-1):
@@ -244,3 +245,35 @@ def infinite_k(op):
     A = np.diag(op["total"]) - op["scatter"].T
     w = np.linalg.eigvals(np.linalg.solve(A, F.T))
     return float(w[np.argmax(w.real)].real)
+
+
+def pt_terms_complex(F, A, w, dSt, dN0, dN1):
+    """pt_lib.pt_terms (copied from ce_mg_triga, P0 and P1 parts of the
+    first-order detector change) for a complex adjoint A and complex
+    perturbation (dSt, dN0, dN1); F (static forward moments) and w are real.
+
+    pt_terms casts to float, so it is called on real and imaginary parts:
+    the contraction is bilinear in A and in the perturbation, hence
+    P(F, Ar + i Ai, Xr + i Xi) = P(Ar, Xr) - P(Ai, Xi)
+    + i (P(Ai, Xr) + P(Ar, Xi)).
+
+    Returns
+    -------
+    (P0, P1) : complex
+    """
+    F = np.asarray(F)
+    if np.iscomplexobj(F) and np.any(np.imag(F) != 0):
+        raise ValueError("F (static forward moments) must be real")
+    F = np.real(F)
+    w = np.real(np.asarray(w))
+    A = np.asarray(A, complex)
+    X = [np.asarray(x, complex) for x in (dSt, dN0, dN1)]
+    Xr = [x.real for x in X]
+    Xi = [x.imag for x in X]
+
+    def P(a, x):
+        return np.array(pt_lib.pt_terms(F, a, w, *x))
+
+    out = (P(A.real, Xr) - P(A.imag, Xi)
+           + 1j * (P(A.imag, Xr) + P(A.real, Xi)))
+    return complex(out[0]), complex(out[1])

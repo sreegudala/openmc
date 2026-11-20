@@ -94,7 +94,8 @@ neutrons. Noise mode is multigroup only.
 | `common/harness.py` | Runs 20 independent replicas (concurrently on TACC). Implements the pass criteria: STD, STD-C (Hotelling $T^2$ on principal components for correlated mesh tallies), the paired on/off test, the two-sample test against another Monte Carlo code, and FOM. |
 | `common/build.py` | Builders for multigroup libraries, slab models, sources and meshes. |
 | `common/adjoint_lib.py` | Verbatim copy of the ce_mg_triga library transposition (scattering only, fission removed). Do not edit it here; `test_adjoint_lib.py` and `fixtures/adjoint_lib/` keep it in sync. |
-| `common/adjoint_noise_lib.py` | Transposed library for the adjoint noise operator: adds transposed prompt and delayed production matrices to the copy. Also gives the effective operator OpenMC transports and the second-moment diagnostic. |
+| `common/adjoint_noise_lib.py` | Transposed library for the adjoint noise operator: adds transposed prompt and delayed production matrices to the copy. Also gives the effective operator OpenMC transports the second-moment diagnostic, and `pt_terms_complex` (the perturbation contraction for a complex adjoint). |
+| `common/pt_lib.py` | Verbatim copy of ce_mg_triga's first-order perturbation contraction (`pt_terms`, P0 and P1 parts). `test_pt_lib.py` and `fixtures/pt_lib/` keep it in sync. |
 | `briefs/` | Task briefs from the user (e.g. `noise_stage7_brief.md`). |
 | `stageN/run_stageN.py` | Stage driver: builds the cases, runs the replicas, scores against the references, writes `stageN_log_*.md`. |
 | `stageN/stageN_gate.md` | Gate record: which runs count, disposition of any misses, and the verdict. |

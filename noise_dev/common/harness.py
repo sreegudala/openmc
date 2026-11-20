@@ -209,6 +209,15 @@ def hotelling_pca(vals, ref, mask=None, frac=0.99):
     return k, T2, float(scipy.stats.f.sf(F, k, R - k))
 
 
+def _z(diff, sigma):
+    """diff / sigma, with 0 for an exact match without variance (e.g. the
+    Im part of a real tally against a real reference)."""
+    if sigma == 0 and diff == 0:
+        return 0.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return diff / sigma
+
+
 def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
                    p_min=0.0027):
     """STD-C: standard criterion for strongly correlated tallies (mesh bins).
@@ -247,8 +256,8 @@ def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
     r = ref[mask]
     T = v.sum(axis=1)
     rT = r.sum()
-    z_int = ((T.real.mean() - rT.real) / (T.real.std(ddof=1) / np.sqrt(R)),
-             (T.imag.mean() - rT.imag) / (T.imag.std(ddof=1) / np.sqrt(R)))
+    z_int = (_z(T.real.mean() - rT.real, T.real.std(ddof=1) / np.sqrt(R)),
+             _z(T.imag.mean() - rT.imag, T.imag.std(ddof=1) / np.sqrt(R)))
     ok_int = bool(abs(z_int[0]) < 3 and abs(z_int[1]) < 3)
 
     hot = hotelling_pca(vals, ref, mask)
@@ -311,15 +320,20 @@ def paired_correlated(on, off, mask=None, p_min=0.0027):
 
 def welch_p(xa, xb, rel_sys_b=0.0):
     """Two-sided Welch p-values of mean(xa) = mean(xb) along axis 0 (real
-    arrays), with an optional relative systematic on b treated as known."""
+    arrays), with an optional relative systematic on b treated as known.
+    Entries that agree exactly with no variance in either set (e.g. the Im
+    part of two real tallies) get t = 0 and p = 1."""
     Ra, Rb = xa.shape[0], xb.shape[0]
     va = xa.var(axis=0, ddof=1) / Ra
     vb = xb.var(axis=0, ddof=1) / Rb
     vs = (rel_sys_b * xb.mean(axis=0))**2
+    diff = xa.mean(axis=0) - xb.mean(axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
-        t = (xa.mean(axis=0) - xb.mean(axis=0)) / np.sqrt(va + vb + vs)
+        t = diff / np.sqrt(va + vb + vs)
         df = (va + vb)**2 / (va**2 / (Ra - 1) + vb**2 / (Rb - 1))
-    return t, 2 * scipy.stats.t.sf(np.abs(t), df)
+        p = 2 * scipy.stats.t.sf(np.abs(t), df)
+    exact = (va + vb + vs == 0) & (diff == 0)
+    return np.where(exact, 0.0, t), np.where(exact, 1.0, p)
 
 
 def two_sample_correlated(a, b, mask=None, b_rel_sys=0.0, p_min=0.0027):

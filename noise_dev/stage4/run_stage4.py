@@ -62,6 +62,23 @@ def mat_4a(nusf=NUSF_4A):
                               beta=[0.0065], lam=[0.0784])
 
 
+def mix_4b():
+    """CORTEX fuel homogenised with water by the pin-cell fuel volume
+    fraction (the bare fuel has k_inf = 0.62); a 100 cm slab of it is
+    near critical."""
+    fuel = cortex_fuel()
+    water = Material(total=[0.25411, 1.2182],
+                     scatter=[[0.22519143, 0.028124], [0.0, 1.188884]],
+                     inv_v=fuel.inv_v)
+    vf = 0.7314**2 / 1.26**2
+    return Material(total=vf * fuel.total + (1 - vf) * water.total,
+                    scatter=vf * fuel.scatter + (1 - vf) * water.scatter,
+                    inv_v=fuel.inv_v,
+                    nu_fission_p=vf * fuel.nu_fission_p,
+                    nu_fission_d=vf * fuel.nu_fission_d,
+                    chi_p=fuel.chi_p, chi_d=fuel.chi_d, lam=fuel.lam)
+
+
 def sn_reference(slab_regions, x0, G, freqs, src_region, spectrum,
                  n_angles=64, adjoint_static=False):
     sl = Slab(slab_regions, x0=x0, n_angles=n_angles)
@@ -242,21 +259,8 @@ def main():
 
     # ---------------------------------------------------------------- 4b
     if "4b" in only:
-        fuel = cortex_fuel()
-        # Size a bare fuel slab... fuel k_inf = 0.62, so add fuel/water:
-        # use a homogenized fuel+water mixture scaled to k ~ 1 in a slab.
         log("Stage 4b: two-group slab")
-        water = Material(total=[0.25411, 1.2182],
-                         scatter=[[0.22519143, 0.028124], [0.0, 1.188884]],
-                         inv_v=fuel.inv_v)
-        # homogenized cell: fuel volume fraction from the CORTEX pin cell
-        vf = 0.7314**2 / 1.26**2
-        mix = Material(total=vf * fuel.total + (1 - vf) * water.total,
-                       scatter=vf * fuel.scatter + (1 - vf) * water.scatter,
-                       inv_v=fuel.inv_v,
-                       nu_fission_p=vf * fuel.nu_fission_p,
-                       nu_fission_d=vf * fuel.nu_fission_d,
-                       chi_p=fuel.chi_p, chi_d=fuel.chi_d, lam=fuel.lam)
+        mix = mix_4b()
 
         def slab_k(width):
             s = Slab([(width, mix, int(width * 4))], x0=-width / 2, n_angles=16)

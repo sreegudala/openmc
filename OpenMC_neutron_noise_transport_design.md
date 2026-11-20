@@ -809,6 +809,12 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
 
 **Log and plot.** $\delta\phi^\dagger_g(x)$ amplitude and phase, which is the transfer map $G(\omega)$ for that detector; FOM of forward against adjoint for the detector response; penetration statistics (particles reaching $V_d$ per source particle).
 
+  - *Amendment (2026-11-20b, Stage 7): 7e dropped; 7c contraction and pairing.*
+    - **7e is not run.** The code rejects negative frequencies (`settings.cpp`, "Noise frequency must be non-negative"), and under the bilinear convention above no run needs $-\omega$. For real cross sections $\mathcal L(-\omega)=\overline{\mathcal L(\omega)}$ exactly, so the sesquilinear $\psi^\dagger=\bar\chi$ is a post-processing step; `ref_inf.py`'s self-test checks the identity. Running at $-\omega$ would need code changes (sign of the copy weight, $|\omega|$ in $\Sigma_\omega$) that this plan does not otherwise need. The Pass list's STD for 7e is void.
+    - **7c uses P0 + P1 for both perturbations.** The P1 term enters through $\delta\Sigma_t$ as well as through the P1 scattering moment, so the scalar flux alone is not exact for an absorber either. On the 7b slab with the perturbed cell at $x\in[30,31]$ cm, `ref_sn1d` gives the P0-only error as 4e-4 for a thermal absorber but 25 % for a scattering density change ($\delta\Sigma_t=\delta\Sigma_s$, P0 parts nearly cancel), and P0 + P1 within 3e-4 for both, with one 1 cm bin. Both cases therefore use `pt_lib.pt_terms` (copied from ce_mg_triga at 540ab07), applied to the complex $\chi$ by linearity (`adjoint_noise_lib.pt_terms_complex`).
+    - **7c is a paired test.** The contraction uses the static moments of $\phi_0$ from the forward run itself (same normalisation per static particle), so forward replica $r$ and its contraction are correlated. Each forward replica is paired with an independent adjoint replica; the differences are i.i.d. and `harness.paired_correlated` replaces the two-sample test.
+    - **Penetration statistics are not logged** separately: in the 7b slab every source particle can reach the detector, and the forward/adjoint FOM ratio carries the information. They return with the out-of-core detectors of Stage 9b.
+
 ### Stage 8 — Vibrating component
 
 **Precondition.** Stage 0 by-eye answers recorded; Stage 5 passed; cancellation on.
