@@ -183,3 +183,44 @@ def test_noise_phase_filter_xml():
     assert new.id == 8
     with pytest.raises(ValueError):
         openmc.NoisePhaseFilter(bins=['a', 'b'])
+
+
+def test_noise_refuses_weight_windows(run_in_tmpdir):
+    # Weight windows act on Re w only; noise mode must refuse them
+    groups = openmc.mgxs.EnergyGroups([0.0, 20.0e6])
+    xs = openmc.XSdata('m', groups)
+    xs.order = 0
+    xs.set_total([1.0])
+    xs.set_absorption([0.5])
+    xs.set_scatter_matrix([[[0.5]]])
+    xs.set_inverse_velocity([1.0e-5])
+    lib = openmc.MGXSLibrary(groups)
+    lib.add_xsdata(xs)
+    lib.export_to_hdf5('mgxs.h5')
+
+    mat = openmc.Material()
+    mat.add_macroscopic('m')
+    mats = openmc.Materials([mat])
+    mats.cross_sections = 'mgxs.h5'
+    box = openmc.model.RectangularParallelepiped(
+        -5, 5, -5, 5, -5, 5, boundary_type='reflective')
+    geom = openmc.Geometry([openmc.Cell(fill=mat, region=-box)])
+
+    mesh = openmc.RegularMesh()
+    mesh.lower_left = (-5, -5, -5)
+    mesh.upper_right = (5, 5, 5)
+    mesh.dimension = (1, 1, 1)
+    settings = openmc.Settings()
+    settings.energy_mode = 'multi-group'
+    settings.run_mode = 'fixed source'
+    settings.particles = 10
+    settings.batches = 1
+    settings.source = openmc.IndependentSource(
+        space=openmc.stats.Point(), energy=openmc.stats.Discrete([1e6], [1]))
+    settings.noise = {'frequency': 1.0}
+    settings.weight_windows = openmc.WeightWindows(
+        mesh, lower_ww_bounds=[0.5], upper_bound_ratio=5.0)
+
+    model = openmc.Model(geom, mats, settings)
+    with pytest.raises(RuntimeError, match='[Ww]eight windows'):
+        model.run()

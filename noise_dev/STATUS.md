@@ -45,15 +45,14 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 - TACC job: `stage7/run_stage7_prep.py` (N3a and N3b against
   `ref_inf.py`'s adjoint, plus the informational N3x).
-- Approval needed: should noise mode refuse weight windows (fatal error)
-  until N3c is implemented?
 
 ## Open items and known limitations
 
 - **N3c, weight windows in noise mode.** They apply but are wrong for
   complex weights: Re-only comparisons, the cutoff kills every Re w < 0, and
-  split copies drop Im (`stage7/stage7_prep_log.md`). A fix needs a
-  design-doc amendment first. Stage 9b needs windows to reach the
+  split copies drop Im (`stage7/stage7_prep_log.md`). Noise mode now
+  refuses them with a fatal error. A fix needs a design-doc amendment
+  first. Stage 9b needs windows to reach the
   out-of-core detectors.
 - **Variance of transposed libraries.** A multiplicity above 1 can make the
   second moment infinite (`adjoint_noise_lib.second_moment_radius` ≥ 1; N3x
@@ -96,6 +95,8 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-20: noise mode refuses weight windows (fatal error) until N3c
+  is designed.
 - 2026-11-20: Stage 7 brief N1 and N2 done. The TRIGA transposition was
   copied verbatim with a sync test, and the noise extension uses the matrix
   fission form. Unit tests pass: transposing twice is the identity, k is

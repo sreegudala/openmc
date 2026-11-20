@@ -222,10 +222,12 @@ brief requires):
   normalise the source to unit mean modulus.
 - Decide whether fission sites are checked at birth.
 
-**Test.** Not run: windows cannot be tested before this is fixed. Until
-then, combining them with noise mode silently gives wrong answers. Noise
-mode should refuse weight windows (fatal error) until the amendment is
-implemented; that guard is a one-line change awaiting approval.
+**Test.** Not run: windows cannot be tested before this is fixed.
+
+**Guard (2026-11-20, approved by the user).** `noise::initialize`
+(src/noise.cpp) now stops with a fatal error when weight windows are on in
+noise mode, so they can no longer silently give wrong answers. Regression
+test: `tests/unit_tests/test_noise.py::test_noise_refuses_weight_windows`.
 
 ## Gate-run results
 

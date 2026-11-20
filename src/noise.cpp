@@ -181,6 +181,14 @@ void initialize()
     settings::event_based = false;
   }
 
+  // Weight windows compare and split the real part of the weight only: the
+  // cutoff kills every particle with Re w <= cutoff and split copies lose
+  // the imaginary part (noise_dev/stage7/stage7_prep_log.md, N3c).
+  if (settings::weight_windows_on) {
+    fatal_error("Weight windows are not yet supported in noise mode (they "
+                "act on the real part of complex weights only).");
+  }
+
   // Inverse velocity must be supplied: OpenMC otherwise silently substitutes
   // an estimate from the group boundaries.
   if (settings::noise_omega > 0.0) {
