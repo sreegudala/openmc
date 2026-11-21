@@ -14,30 +14,31 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 4 | Space dependence (slabs vs $S_N$) | **Passed** (9/9); STD-C criterion introduced | `stage4/stage4_gate.md` |
 | 5 | Weight cancellation | **Passed**; 5d gated on Im FOM (amendment) | `stage5/stage5_gate.md` |
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
-| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **In progress**: N1/N2 done (unit tests pass). N3a/N3b pass 6/6 (job 3598276), but N3b has low power (σ 1–4 %); follow-up at 4× particles plus a forward control. N3c: weight windows are not complex-safe and noise mode now refuses them | `stage7/stage7_prep_log.md` |
-| 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **In progress**: driver `stage7/run_stage7.py` ready (7a, 7b + 7d + low-ω check, 7c, 7f; 7e dropped by amendment); smoke-tested locally, gate runs go to TACC | |
+| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c: weight windows are not complex-safe and noise mode refuses them | `stage7/stage7_prep_log.md` |
+| 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **In progress**: 7a 10/10 (job 3600163); slab job 19/20 (job 3600164). The miss is 7d forward at 1 Hz (+1.5 %, z 3.5), being rerun with fresh seeds at 4× particles | `stage7/stage7_log_7a.md`, `stage7/stage7_log_7b_lf_7c_7f.md` |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: Stage 7 gate runs (TACC)
+## Next: Stage 7 rerun, then the gate record
 
-- Job A, `run_stage7.py --only 7a`: infinite medium, N3 material (80000
-  particles) and CORTEX fuel (1e6 particles), 0.1–100 Hz, against the
-  `ref_inf` adjoint.
-- Job B, `run_stage7.py --only 7b,lf,7c,7f`: slab reciprocity (forward
-  against adjoint, two-sample test), S_N fields (7d), the low-ω check, the
-  sampled-source contraction (7c, P0 + P1) and the histogram library (7f).
-- Optional, not blocking: the N3b/N3f follow-up at 4× particles
-  (`run_stage7_prep.py --only n3b,n3f --particles 80000`); 7a now covers
-  N3b at 80000 particles.
-- **CORTEX adjoint is expensive.** In the transposed CORTEX fuel only the
-  fast group produces, and a thermal adjoint particle reaches it with
-  probability 0.5 % (the transposed 1→2 transfer is 0.00086 cm⁻¹). About
-  95 % of the thermal adjoint value goes through that step. Locally
-  (20 × 10 × 40000): unbiased within statistics (+8 % ± 7.5 %), replica
-  skewness 1.5, FOM about 10× below the forward run. Hence 1e6 particles
-  per batch. A fast adjoint source is worse (about 33 low-importance sites
-  per source particle).
+- **7d forward 1 Hz.** The forward field is uniformly 1.5 % above S_N
+  (integral z +3.5, Hotelling p 0.010, shape fine). The adjoint at 1 Hz
+  agrees with S_N (−0.5 ± 1.0 %), and the reciprocity test passes
+  (t 1.88).
+  - Not a heavy tail: the replicas lie within 0.97–1.05.
+  - Not the reference: S_N k is converged to 3e-7, and 1.5 % would need
+    a k error of 8e-5 (0.19 % per 1e-5 at 1 Hz).
+  - Rerun with fresh seeds at 4× particles:
+    `run_stage7.py --only 7b --freqs-7b 1 --particles 80000 --base-seed
+    100001 --tag p80k`.
+- **7c scattering case.** The forward sampled source has 40–150 % σ: the
+  copy (−δΣ_t ψ₀) and the sampled scatter (+δΣ_s) cancel on average, so
+  the paired test passes without power. The contraction matches S_N
+  within 1σ (0.8–1.3 %) at all three frequencies, with P1 = 27 % of the
+  answer; a wrong P1 sign or factor would be 40–65σ off. The gate record
+  will state this. Cancelling sources of this kind return in Stage 8
+  (vibration).
+- Then `stage7/stage7_gate.md` and Stage 8.
 
 ## Open items and known limitations
 
@@ -102,6 +103,17 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-21: Stage 7 gate runs (commit c12f32cd8). 7a 10/10, pooled z
+  mean +0.38, std 0.99; N3 amplitudes within 0.55 %, CORTEX within
+  about 1 σ (1 %). Slab job 19/20:
+  - 7b reciprocity passes at 1, 30 and 100 Hz (|fwd/adj| − 1 = +2.0 %,
+    +1.1 %, +0.1 %, all within 2σ);
+  - 7c absorber: fwd/contraction within 0.02–1.3 %;
+  - low-ω check, 7f and 7d at 30 and 100 Hz pass;
+  - adjoint FOM 0.3–0.6 of forward in the slab;
+  - miss: 7d forward 1 Hz (see Next).
+
+  N3b/N3f follow-up 6/6.
 - 2026-11-20: Stage 7 driver written and smoke-tested locally (all paths
   run). New: `common/pt_lib.py`, a verbatim copy of ce_mg_triga's P0/P1
   contraction (540ab07) with a sync fixture, and

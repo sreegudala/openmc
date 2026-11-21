@@ -269,3 +269,29 @@ correctly, complex weights included.
 - 5–6 of 6 bins fail, with max |z| 14 (track length) and 8.6 (collision).
 - The means are 8–10 % low in every group, the direction of the TRIGA
   weight-tail bias: rare high-weight histories carry the missing mean.
+
+## Follow-up run: N3b at 4× particles, N3f forward control
+
+TACC job 3599802 (commit c12f32cd8), 20 replicas × 20 batches × 80000
+particles, seeds 100001 + 7919 r (`stage7_prep_log_n3b_n3f_p80k.md`):
+**6/6 pass**, pooled z mean −0.24, std 1.04, nothing at |z| ≥ 3.
+
+| Case | adjoint (N3b) σ | forward (N3f) σ | FOM adjoint / forward | N3b max \|z\| | N3b amplitude |
+|---|---|---|---|---|---|
+| 1 Hz | 0.51 % | 0.10 % | 0.06 | 1.05 | 0.40 % (evaluated) |
+| 30 Hz | 1.04 % | 0.17 % | 0.04 | 1.95 | not evaluated |
+| 100 Hz (η 3) | 1.74 % | 0.48 % | 0.11 | 1.89 | not evaluated |
+
+(σ: relative σ of the mean per group. FOM: 1/(σ² T) with T the summed
+replica time.)
+
+- The 4× rerun with fresh seeds confirms N3b: no sign of bias at
+  σ = 0.5–1.7 %.
+- The adjoint game on this material is intrinsically **10–25 times less
+  efficient** than the forward one. Each adjoint collision carries the
+  transposed multiplicity (2.4 in the thermal group) and the transposed
+  fission yield, so the weight spread is larger. The forward control
+  converges in more generations per batch (1394 against 931 at 1 Hz) and
+  still wins.
+- Stage 7a (`stage7_log_7a.md`) runs the same material at 80000
+  particles as a gate.
