@@ -16,27 +16,20 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c (weight windows) moved to 9b prep | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
-| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **In progress**: N3c implemented (modulus comparisons, phase-preserving split, absolute windows, fission sites checked at birth); unit tests pass; gate runs go to TACC. N5 waits for the regenerated library | `prep9b/` |
+| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 waits for the regenerated library | `prep9b/n3c_gate.md` |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: N3c gate runs (TACC), then Stage 8
+## Next: Stage 8 (vibrating component)
 
-- `prep9b/run_n3c.py --only a`, the deep-penetration water slab:
-  - 60 cm, 15 fast / 73 thermal mfp, detector response 3e-4 at 1 kHz and
-    8e-5 at 10 kHz, CADIS windows from S_N;
-  - η 5 at 10 kHz, where η 1 is divergent in water (c̃ = 1.025);
-  - smoke run: windows reproduce S_N (|z| ≤ 1.1) with a 60–90× FOM gain.
-- `prep9b/run_n3c.py --only b`, adjoint FOM with windows on the 7a cases.
-  - Local check (CORTEX, 30 Hz, 8 replicas): windows are unbiased but 21×
-    slower at the same σ, i.e. no gain.
-  - The CORTEX gap is a rare *reaction* branch (thermal → fast transfer,
-    0.5 %); space/energy windows split after it and cannot make it more
-    likely.
-  - N3's gap is weight spread under multiplicity in a homogeneous medium,
-    where importance is flat within a group.
-  - Windows are for spatial attenuation, which is Stage 9b's problem.
-- Then Stage 8: measure the forward σ first, then size the gate runs.
+- N3c is closed; N5 runs when ce_mg_triga delivers the regenerated
+  CASMO-70 library.
+- Stage 8 (amendment 2026-11-22b):
+  - 8c uses Abeille's orientation;
+  - measure the forward σ of each gated quantity on a short run first and
+    size the gate runs from it;
+  - the gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, δS from
+    tallies) as a second estimator.
 
 ## Open items and known limitations
 
@@ -94,6 +87,15 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-23: **N3c passed** (jobs 3606525, 3606526).
+  - Deep-penetration water slab: windowed detector within 0.11 % / 0.18 %
+    of S_N; on vs off consistent; FOM ×240 at 1 kHz and ×8600 at 10 kHz.
+  - Infinite-medium adjoint with group windows: unbiased (6/6), but the
+    gap to forward is not closed. N3 gains 1–2× (adjoint/forward 0.07–0.25
+    with windows against 0.05–0.30 without); CORTEX is 10–25× worse (rare
+    thermal → fast transfer; windows cannot bias a reaction channel).
+  - 10 kHz field check (logged): thermal bins near the source are starved
+    by detector-optimised windows.
 - 2026-11-22: N3c implemented (design doc amendment 2026-11-22).
   - Code: `apply_weight_window` (modulus, phase-preserving split, absolute
     windows); collision roulette hand-over; fission sites checked at
