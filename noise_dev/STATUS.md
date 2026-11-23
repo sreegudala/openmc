@@ -14,32 +14,36 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 4 | Space dependence (slabs vs $S_N$) | **Passed** (9/9); STD-C criterion introduced | `stage4/stage4_gate.md` |
 | 5 | Weight cancellation | **Passed**; 5d gated on Im FOM (amendment) | `stage5/stage5_gate.md` |
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
-| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c: weight windows are not complex-safe and noise mode refuses them | `stage7/stage7_prep_log.md` |
+| 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c (weight windows) moved to 9b prep | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
+| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **In progress**: N3c implemented (modulus comparisons, phase-preserving split, absolute windows, fission sites checked at birth); unit tests pass; gate runs go to TACC. N5 waits for the regenerated library | `prep9b/` |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: Stage 8 (vibrating component)
+## Next: N3c gate runs (TACC), then Stage 8
 
-- First settle the open geometry question below: the vibrating-pin
-  orientation differs between the paper summary (x) and Abeille's input
-  (y).
-- The vibration source has the same cancelling structure as the 7c
-  scattering case: two large sampled terms of opposite sign. Expect a
-  noisy forward estimate and plan the statistics for it.
+- `prep9b/run_n3c.py --only a`, the deep-penetration water slab:
+  - 60 cm, 15 fast / 73 thermal mfp, detector response 3e-4 at 1 kHz and
+    8e-5 at 10 kHz, CADIS windows from S_N;
+  - η 5 at 10 kHz, where η 1 is divergent in water (c̃ = 1.025);
+  - smoke run: windows reproduce S_N (|z| ≤ 1.1) with a 60–90× FOM gain.
+- `prep9b/run_n3c.py --only b`, adjoint FOM with windows on the 7a cases.
+  - Local check (CORTEX, 30 Hz, 8 replicas): windows are unbiased but 21×
+    slower at the same σ, i.e. no gain.
+  - The CORTEX gap is a rare *reaction* branch (thermal → fast transfer,
+    0.5 %); space/energy windows split after it and cannot make it more
+    likely.
+  - N3's gap is weight spread under multiplicity in a homogeneous medium,
+    where importance is flat within a group.
+  - Windows are for spatial attenuation, which is Stage 9b's problem.
+- Then Stage 8: measure the forward σ first, then size the gate runs.
 
 ## Open items and known limitations
 
-- **N3c, weight windows in noise mode.** They apply but are wrong for
-  complex weights: Re-only comparisons, the cutoff kills every Re w < 0, and
-  split copies drop Im (`stage7/stage7_prep_log.md`). Noise mode now
-  refuses them with a fatal error. A fix needs a design-doc amendment
-  first. Stage 9b needs windows to reach the
-  out-of-core detectors.
 - **Variance of transposed libraries.** A multiplicity above 1 can make the
   second moment infinite (`adjoint_noise_lib.second_moment_radius` ≥ 1; N3x
   has 2.05). Check this for every adjoint test material; the TRIGA library
-  will need windows (N3c).
+  needs windows (N3c, implemented 2026-11-22).
 - **OpenMC MG multiplicity (found in ce_mg_triga 540ab07).** MGMC samples
   the outgoing group from the nu-scatter row and then multiplies by M,
   so a multiplicity that varies along a row is counted twice
@@ -61,9 +65,12 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
   - Runs use threads plus concurrent replicas instead.
 - **FEMFFUSION** is not built (needs deal.II, PETSc and SLEPc). Its
   cross-checks in 4b, 6c and 9a are informational; 9a's gate depends on it.
-- **Stage 8 geometry.** The vibrating-pin orientation differs between the
-  paper summary (x) and Abeille's input (y); settle this before Stage 8.
-  The Eq. 26 form is resolved: arccos, as in Abeille.
+- **Stage 8 geometry: resolved.** The paper's x-vibrating pin at
+  (−2.52, −2.52) and Abeille's y-vibrating pin at (+2.52, −2.52) are related
+  by a 90° rotation of a fully symmetric assembly, so the fields are
+  rotations of each other. 8c uses Abeille's input. The Eq. 26 form is
+  arccos, as in Abeille. Stage 8's gate adds the adjoint contraction
+  ⟨χ, δS⟩ as a second estimator (amendment 2026-11-22b).
 - **Abeille local patch.** The reference build carries one fix (kcol
   restored before `record_generation`); see `tacc/build_abeille.sh`.
 - **Plots.** The design doc asks for Bode plots, z histograms and
@@ -82,9 +89,25 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 2026-11-19 | 5 | 5d gates the Im FOM ratio; mesh averaging cannot reduce Re variance when weights are in phase |
 | 2026-11-20 | 7 | Bilinear convention (transposed library at +ω, conjugation only in post-processing); adjoint = forward solver on the N1 + N2 transposed library (no code change); tests 7a–7f redefined per the brief |
 | 2026-11-20b | 7 | 7e dropped (negative frequencies are rejected and not needed under the bilinear convention); 7c uses P0 + P1 for both perturbations (S_N: P0 alone is 25 % off for a scattering change) and a paired test; penetration statistics deferred to 9b |
+| 2026-11-22 | 9b prep | Stage 9b preparation (N3c weight windows, N5) runs before Stage 8. Noise-mode windows: absolute (source weight scale), modulus comparisons, phase-preserving split, fission sites checked at birth, windows replace the noise roulette inside their mesh; tests N3c-u/a/b |
+| 2026-11-22b | 8 | Pin orientation resolved by symmetry (Abeille's used); gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, from tallies) as a second estimator; statistics sized from a measured forward σ |
 
 ## Log
 
+- 2026-11-22: N3c implemented (design doc amendment 2026-11-22).
+  - Code: `apply_weight_window` (modulus, phase-preserving split, absolute
+    windows); collision roulette hand-over; fission sites checked at
+    birth.
+  - Found: `settings.cpp` had refused windows since the first noise
+    commit, so the N3c audit's "they apply" was wrong (correction noted
+    in the prep log). Windows also forced OpenMC's shared secondary bank,
+    which noise mode refuses.
+  - Fixed during smoke tests: a segfault from the random-number stream
+    not being set at a fission site's birth check.
+  - Non-noise runs are bit-identical to the pre-change build (MG window
+    case, 1 thread).
+  - Unit tests: 27 noise tests pass, including complex-phase windows
+    against the analytic answer and generators refused.
 - 2026-11-22: N1 copy refreshed to ce_mg_triga 540ab07 (`transpose_library`
   plus its HDF5 wrapper, both verbatim). Sync tests: the whole-file fixture
   regenerated byte-identical to the e018a83 one, and the pure function

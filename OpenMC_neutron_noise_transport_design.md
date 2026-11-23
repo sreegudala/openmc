@@ -435,7 +435,7 @@ One family with $\lambda=0.0851\ \text{s}^{-1}$; speeds 1.82304e7 and 4.13067e5 
 **Cautions.**
 
 - FEMFFUSION's 1-D file prints 1.09620e-01 in the first column for group 2 beside $\Sigma_{a,2}=1.07186\text{e-}01$. Re-read the file header before using it.
-- The paper says the vibrating pin moves along $x$, two cells down and two left of centre. The shipped Abeille input vibrates along $y$ for a pin at $x=+2.52$. Check the paper figure before comparing fields.
+- The paper says the vibrating pin moves along $x$, two cells down and two left of centre. The shipped Abeille input vibrates along $y$ for a pin at $x=+2.52$. Check the paper figure before comparing fields. *Resolved by symmetry (amendment 2026-11-22b, Stage 8): the two set-ups are related by a 90° rotation of a fully symmetric assembly; 8c uses Abeille's.*
 - The M&C 2021 multi-solver CORTEX comparison (Vinai et al.) was not read. Frequencies other than 1 and 3 Hz are unverified.
 - Abeille's `rod.yaml` is not a noise input as shipped. Its link to any published rod-model case is speculative.
 - Fauvel et al. Problem 2 (two-group rod, half-length 44.43 cm) is only partly recorded in the notes and cannot be set up from them.
@@ -815,6 +815,39 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
     - **7c is a paired test.** The contraction uses the static moments of $\phi_0$ from the forward run itself (same normalisation per static particle), so forward replica $r$ and its contraction are correlated. Each forward replica is paired with an independent adjoint replica; the differences are i.i.d. and `harness.paired_correlated` replaces the two-sample test.
     - **Penetration statistics are not logged** separately: in the 7b slab every source particle can reach the detector, and the forward/adjoint FOM ratio carries the information. They return with the out-of-core detectors of Stage 9b.
 
+### Stage 9b preparation — weight windows with complex weights (N3c) and the shared TRIGA library (N5)
+
+*Amendment (2026-11-22). Order: this section runs after Stage 7 and **before Stage 8**. Stage 9b does not depend on vibration, but it needs windows to reach the out-of-core detectors (the TRIGA adjoints were 79 % low from weight tails without them), and Stage 7 showed the adjoint game 10–25 times less efficient than the forward one on the N3 and CORTEX materials. N5 (checks of the regenerated ce_mg_triga library) also belongs here and runs when that library arrives. Stage 8 follows.*
+
+**Change (N3c).** Weight windows in noise mode, which until now refuse to run (guard of 2026-11-20). In `apply_weight_window`, when `settings::noise_mode`:
+
+- **Absolute windows.** Bounds are scaled by the noise weight scale only: 1 for an external source of unit-modulus sites, or the batch's mean source modulus for a sampled source. They are *not* renormalised by each particle's birth weight (OpenMC's `wgt_born / wgt_ww_born`): every fission site is a new particle, so per-birth renormalisation would reset the windows each generation and never control the weight spread across generations. The user supplies windows in the units of a unit source, typically lower bounds $C/|\psi^\dagger|$ from an importance estimate (CADIS).
+- **Modulus.** Every comparison (weight cutoff, lower and upper bound, `max_lb_ratio`, survival weight) uses $|w|$.
+- **Phase-preserving split.** Splitting into $n$ gives each copy $(\mathrm{Re}\,w/n,\ \mathrm{Im}\,w/n)$, and the survivor is scaled by $1/n$. Roulette uses the existing norm-based `russian_roulette`, which keeps the phase.
+- **Fission sites** are checked against the windows when their track starts, as source particles are.
+- **Roulette.** Inside the window mesh the windows replace the noise roulette. Otherwise its fixed cutoff would kill the small-weight particles that windows create near a detector. Outside the mesh the noise roulette is unchanged, and `apply_russian_roulette` (survival biasing) is not used in noise mode.
+- **Unchanged.**
+  - Non-noise runs follow the same code path with $\mathrm{Im}\,w=0$; their results are bit-identical.
+  - Weight-window *generators* stay refused in noise mode: they tally a real flux.
+- **Cancellation** acts on the fission bank between generations and windows within a generation, so the two do not interact.
+
+**Tests.**
+
+- **N3c-u (unit, `tests/unit_tests/test_noise.py`).** Noise mode accepts windows. A tight window that forces splitting and roulette gives the same answer as no windows within statistics. Generators are refused.
+- **N3c-a, deep penetration.** A fission-free 2-group water slab (CORTEX water data), fast source at one face and a thermal detector at the other, at least 30 mean free paths apart, at two frequencies where the detector response has a large phase lag (one where Re changes sign along the slab).
+  - Windows: CADIS lower bounds $C/|\chi|$ on a 1 cm × 2-group mesh, from the `ref_sn1d` transposed solution for the detector, with $C$ placing a unit source particle at its window centre; upper/lower ratio 5.
+  - Runs: forward with and without windows; reference `ref_sn1d`.
+- **N3c-b, adjoint efficiency.** The 7a infinite-medium adjoint cases (N3 material, CORTEX fuel) at 1, 30 and 100 Hz with group windows $C/|\psi_g|$. Here $\psi$ is the forward solution for the adjoint source $R$, i.e. the importance for $\langle\chi,R\rangle$, and $C$ places the source group's unit weight at its window centre. Runs: with and without windows; forward controls at the same particle counts (N3f for N3, a CORTEX forward run).
+
+**Pass.**
+
+- N3c-u: the unit tests pass.
+- N3c-a:
+  - STD of the windowed detector response against `ref_sn1d`;
+  - the two-sample test between windows on and off, where the off run scores;
+  - FOM with windows above FOM without (95 % bootstrap lower bound of the ratio above 1).
+- N3c-b: STD against `ref_inf`'s adjoint with windows on. The FOM ratio with/without windows, and adjoint-with-windows against forward, are logged and not gated.
+
 ### Stage 8 — Vibrating component
 
 **Precondition.** Stage 0 by-eye answers recorded; Stage 5 passed; cancellation on.
@@ -825,7 +858,7 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
 
 - **8a.** A 1-D slab with a fuel–water interface inside the core region of case 7c, $\varepsilon=0.2$ cm, $\omega_0=2\pi$ rad/s, harmonics $n=1,2$. Reference: `ref_sn1d.py` with the source built from the same $c_n(x)$ on a mesh resolving the layer (at least 40 cells across $2\varepsilon$).
 - **8b.** $\varepsilon\to0$ check: the $n=1$ response scales linearly with $\varepsilon$ for $\varepsilon=0.05,0.1,0.2$ cm.
-- **8c, published benchmark.** Vibrating pin in the CORTEX assembly at 1 Hz, harmonics 1 and 2, cancellation mesh 170×170 and 340×340. Reference: Abeille `noise_vibration.yaml`, with orientation as resolved in Stage 0. Compare with the published statement of agreement with APOLLO3 within error bars.
+- **8c, published benchmark.** Vibrating pin in the CORTEX assembly at 1 Hz, harmonics 1 and 2, cancellation mesh 170×170 and 340×340. Reference: Abeille `noise_vibration.yaml`, in its own orientation (pin at $(+2.52,-2.52)$ moving along $y$; amendment 2026-11-22b). Compare with the published statement of agreement with APOLLO3 within error bars.
 
 **Pass.**
 
@@ -835,6 +868,18 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
 - The real part of the first harmonic must not show the seed-dependent bias reported for runs without cancellation.
 
 **Log and plot.** Source tally (Re and Im) across the layer against $c_n$; maps per harmonic; FOM with cancellation; statement of which $c_n$ form was used.
+
+  - *Amendment (2026-11-22b, Stage 8): pin orientation and the second estimator.*
+    - **Orientation resolved by symmetry.**
+      - The paper text has the pin at $(-2.52,-2.52)$ cm (two cells left of and two below centre) moving along $x$.
+      - Abeille's `noise_vibration.yaml` has the pin at $x\in[2.1543,2.8857]$, $y\in[-2.8857,-2.1543]$ (centre $(+2.52,-2.52)$) moving along $+y$: two flat-vibration layers of half-width 0.2 cm on the pin's $y$ faces, positive side water above and fuel below.
+      - The rotation $(x,y)\to(-y,x)$ maps the first onto the second, including the sense of motion. The CORTEX assembly is invariant under it: the 17×17 lattice with 25 water holes (`stage6/cortex.py`) is unchanged by 90° rotation and by every reflection, and both positions are fuel pins. The pins, water blade, reflective boundaries and data are identical.
+      - So the two set-ups give the same field up to that rotation. 8c uses Abeille's configuration, which carries the reference numbers.
+    - **Statistics.** The vibration source is two layers of nearly equal and opposite weight (fuel ↔ water). Stage 7c showed that a forward sampled source of this cancelling kind can have a σ of 40–150 %. Stage 8 starts by measuring the forward σ of each gated quantity on a short run and sizing the gate runs from it, with cancellation on as the precondition requires.
+    - **Second estimator in the gate.** Each gated detector response is also computed as the adjoint contraction $\langle\chi,\delta S\rangle$.
+      - $\chi$ is from an adjoint run (transposed library, Stage 7) with the detector as source.
+      - $\delta S=-\delta\mathcal L\,\phi_0$ is built from tallies on the swept layers: the static $\phi_0$ moments and the material difference times $c_n$, contracted with `pt_lib.pt_terms` (P0 + P1) as in 7c.
+      - Gate: the forward estimate and the contraction agree (paired or two-sample test as in 7c), in addition to the 8a–8c criteria.
 
 ### Stage 9 — Many-group benchmark and TRIGA dry run
 
@@ -920,7 +965,7 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
 |---|---|---|
 | Belanger Eq. 26: arcsin or arccos | Determines $c_n$; transcription and Abeille code disagree | 0, 8 |
 | Belanger Eq. 17: sign between the deltas | Phase of the oscillation source at $-\omega_0$ | 0, 6 |
-| Vibrating pin position and axis | Paper text and shipped Abeille input disagree | 0, 8 |
+| Vibrating pin position and axis | Paper text and shipped Abeille input disagree; equivalent by symmetry, Abeille's used (amendment 2026-11-22b) | 0, 8 |
 | OpenMC issues, open pull requests, Discussions, Discourse | Not searched; prior or parallel work is unknown | 0 |
 | GPU fork data-layout constraints | Unverified; affects only the weight-representation argument | before upstreaming |
 | FEMFFUSION 1-D group-2 column values | Printed numbers look inconsistent | 0, 4 |

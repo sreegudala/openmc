@@ -185,8 +185,10 @@ def test_noise_phase_filter_xml():
         openmc.NoisePhaseFilter(bins=['a', 'b'])
 
 
-def test_noise_refuses_weight_windows(run_in_tmpdir):
-    # Weight windows act on Re w only; noise mode must refuse them
+def _ww_model(windows=True, phase=2.0, generator=False):
+    """One-group reflective box (infinite medium), Sigma_t = 1, Sigma_a = 0.5,
+    1/v = 1e-5 s/cm at omega = 5e4 rad/s, so omega/v = 0.5 and the volume
+    integrated flux per source particle is exp(i phase) / (0.5 + 0.5 i)."""
     groups = openmc.mgxs.EnergyGroups([0.0, 20.0e6])
     xs = openmc.XSdata('m', groups)
     xs.order = 0
@@ -213,14 +215,44 @@ def test_noise_refuses_weight_windows(run_in_tmpdir):
     settings = openmc.Settings()
     settings.energy_mode = 'multi-group'
     settings.run_mode = 'fixed source'
-    settings.particles = 10
-    settings.batches = 1
-    settings.source = openmc.IndependentSource(
+    settings.particles = 2000
+    settings.batches = 10
+    src = openmc.IndependentSource(
         space=openmc.stats.Point(), energy=openmc.stats.Discrete([1e6], [1]))
-    settings.noise = {'frequency': 1.0}
-    settings.weight_windows = openmc.WeightWindows(
-        mesh, lower_ww_bounds=[0.5], upper_bound_ratio=5.0)
+    src.phase = phase
+    settings.source = src
+    settings.noise = {'frequency': 5.0e4 / (2 * np.pi)}
+    if windows:
+        # Tight window: unit source weights are split (upper bound 0.1) and
+        # survivors below 0.05 are rouletted at every collision
+        settings.weight_windows = openmc.WeightWindows(
+            mesh, lower_ww_bounds=[0.05], upper_bound_ratio=2.0,
+            max_split=10)
+    if generator:
+        settings.weight_window_generators = openmc.WeightWindowGenerator(mesh)
+    tally = openmc.Tally(name='flux')
+    tally.filters = [openmc.ComplexPartFilter()]
+    tally.scores = ['flux']
+    tally.estimator = 'tracklength'
+    return openmc.Model(geom, mats, settings, openmc.Tallies([tally]))
 
-    model = openmc.Model(geom, mats, settings)
-    with pytest.raises(RuntimeError, match='[Ww]eight windows'):
-        model.run()
+
+@pytest.mark.parametrize('windows', [False, True])
+def test_noise_weight_windows_complex(run_in_tmpdir, windows):
+    # The source phase makes Re w negative at birth: windows acting on Re w
+    # would kill every particle (cutoff) and splits would lose Im w
+    phase = 2.0
+    sp = _ww_model(windows, phase).run()
+    with openmc.StatePoint(sp) as s:
+        st = openmc.noise.complex_tally_stats(s.get_tally(name='flux'))
+    ref = np.exp(1j * phase) / (0.5 + 0.5j)
+    v = st['value'].ravel()[0]
+    assert abs(v.real - ref.real) < 4 * st['re_std'].ravel()[0]
+    assert abs(v.imag - ref.imag) < 4 * st['im_std'].ravel()[0]
+    assert abs(abs(v) / abs(ref) - 1) < 0.03
+
+
+def test_noise_refuses_weight_window_generators(run_in_tmpdir):
+    # Generators tally a real flux; noise mode must refuse them
+    with pytest.raises(RuntimeError, match='[Gg]enerators'):
+        _ww_model(windows=False, generator=True).run()

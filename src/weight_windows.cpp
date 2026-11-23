@@ -13,6 +13,7 @@
 #include "openmc/hdf5_interface.h"
 #include "openmc/mesh.h"
 #include "openmc/message_passing.h"
+#include "openmc/noise.h"
 #include "openmc/nuclide.h"
 #include "openmc/output.h"
 #include "openmc/particle.h"
@@ -977,21 +978,29 @@ void apply_weight_window(Particle& p, WeightWindow weight_window)
   if (p.E() <= 0 || !p.alive())
     return;
 
-  // If particle has not yet had its birth weight window value set, set it to
-  // the current weight window.
-  if (p.wgt_ww_born() == -1.0)
-    p.wgt_ww_born() =
-      (weight_window.lower_weight + weight_window.upper_weight) / 2;
+  if (settings::noise_mode) {
+    // Noise mode (complex weights): absolute windows in units of the noise
+    // source weight scale. Every fission site starts a new track, so the
+    // per-birth normalisation below would reset the windows each generation
+    // (design doc, Stage 9b preparation, N3c).
+    weight_window.scale(noise::source_weight_scale());
+  } else {
+    // If particle has not yet had its birth weight window value set, set it
+    // to the current weight window.
+    if (p.wgt_ww_born() == -1.0)
+      p.wgt_ww_born() =
+        (weight_window.lower_weight + weight_window.upper_weight) / 2;
 
-  // Normalize weight windows based on particle's starting weight
-  // and the value of the weight window the particle was born in.
-  weight_window.scale(p.wgt_born() / p.wgt_ww_born());
+    // Normalize weight windows based on particle's starting weight
+    // and the value of the weight window the particle was born in.
+    weight_window.scale(p.wgt_born() / p.wgt_ww_born());
+  }
 
-  // get the paramters
-  double weight = p.wgt();
+  // get the paramters; complex weights (noise mode) are compared by modulus
+  double weight = settings::noise_mode ? p.wgt_abs() : p.wgt();
 
   // first check to see if particle should be killed for weight cutoff
-  if (p.wgt() < weight_window.weight_cutoff) {
+  if (weight < weight_window.weight_cutoff) {
     p.kill();
     return;
   }
@@ -1000,9 +1009,9 @@ void apply_weight_window(Particle& p, WeightWindow weight_window)
   // only do this if the factor is not already set on the particle and a
   // maximum lower bound ratio is specified
   if (p.ww_factor() == 0.0 && weight_window.max_lb_ratio > 1.0 &&
-      p.wgt() > weight_window.lower_weight * weight_window.max_lb_ratio) {
+      weight > weight_window.lower_weight * weight_window.max_lb_ratio) {
     p.ww_factor() =
-      p.wgt() / (weight_window.lower_weight * weight_window.max_lb_ratio);
+      weight / (weight_window.lower_weight * weight_window.max_lb_ratio);
   }
 
   // move weight window closer to the particle weight if needed
@@ -1035,13 +1044,18 @@ void apply_weight_window(Particle& p, WeightWindow weight_window)
 
     p.n_split() += n_split;
 
-    // Create secondaries and divide weight among all particles
+    // Create secondaries and divide weight among all particles. Both parts
+    // of a complex weight are divided, so the phase is kept (wgt_im is 0
+    // outside noise mode).
+    double wgt_re = p.wgt();
+    double wgt_im = p.wgt_im();
     int i_split = std::round(n_split);
     for (int l = 0; l < i_split - 1; l++) {
-      p.split(weight / n_split);
+      p.split(wgt_re / n_split, wgt_im / n_split);
     }
     // remaining weight is applied to current particle
-    p.wgt() = weight / n_split;
+    p.wgt() = wgt_re / n_split;
+    p.wgt_im() = wgt_im / n_split;
 
   } else if (weight <
              weight_window.lower_weight * (1.0 - WEIGHT_WINDOW_REL_TOL)) {

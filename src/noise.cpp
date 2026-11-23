@@ -28,6 +28,7 @@
 #include "openmc/tallies/filter_noise_phase.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/vector.h"
+#include "openmc/weight_windows.h"
 #include "openmc/xml_interface.h"
 
 namespace openmc {
@@ -181,12 +182,11 @@ void initialize()
     settings::event_based = false;
   }
 
-  // Weight windows compare and split the real part of the weight only: the
-  // cutoff kills every particle with Re w <= cutoff and split copies lose
-  // the imaginary part (noise_dev/stage7/stage7_prep_log.md, N3c).
-  if (settings::weight_windows_on) {
-    fatal_error("Weight windows are not yet supported in noise mode (they "
-                "act on the real part of complex weights only).");
+  // Weight windows act on |w| with the phase kept, in absolute units of the
+  // source weight scale (apply_weight_window). Generators tally a real flux
+  // and are not supported (design doc, Stage 9b preparation, N3c).
+  if (!variance_reduction::weight_windows_generators.empty()) {
+    fatal_error("Weight window generators are not supported in noise mode.");
   }
 
   // Inverse velocity must be supplied: OpenMC otherwise silently substitutes
@@ -268,6 +268,11 @@ double survive()
 }
 
 } // namespace
+
+double source_weight_scale()
+{
+  return weight_scale;
+}
 
 void roulette(Particle& p)
 {
@@ -471,10 +476,14 @@ void sample_reaction(Particle& p)
   double sigma_s = sigma_t - sigma_w - xs.absorption;
   p.scale_wgt(sigma_s / sigma_t);
 
-  // Norm-based roulette preserving the phase
-  roulette(p);
-  if (!p.alive())
-    return;
+  // Norm-based roulette preserving the phase. With weight windows on,
+  // collision_mg applies the windows (inside their mesh) or this roulette
+  // (outside) after the collision instead.
+  if (!settings::weight_windows_on) {
+    roulette(p);
+    if (!p.alive())
+      return;
+  }
 
   scatter(p);
 }
@@ -499,7 +508,15 @@ void transport_tracks(int64_t n, bool from_bank)
         init_particle_seeds(p.id(), p.seeds());
         p.event_revive_from_secondary(
           simulation::shared_secondary_bank_read[i - 1]);
-        p.wgt_born() = p.wgt();
+        p.wgt_born() = p.wgt_abs();
+        // Fission sites are checked against the windows at birth, as
+        // source particles are (initialize_particle_track). Roulette and
+        // splitting draw random numbers, and the tracking stream is not
+        // otherwise set until the track's first step.
+        if (settings::weight_windows_on) {
+          p.stream() = STREAM_TRACKING;
+          apply_weight_windows(p);
+        }
       }
       transport_history_based_single_particle(p);
     }

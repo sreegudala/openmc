@@ -37,8 +37,13 @@ void collision_mg(Particle& p)
     auto [ww_found, ww] = search_weight_window(p);
     if (!ww_found && p.type() == ParticleType::neutron()) {
       // if the weight window is not valid, apply russian roulette
-      // (regardless of weight window collision checkpoint setting)
-      apply_russian_roulette(p);
+      // (regardless of weight window collision checkpoint setting); in noise
+      // mode the norm-based noise roulette that the windows replace
+      if (settings::noise_mode) {
+        noise::roulette(p);
+      } else {
+        apply_russian_roulette(p);
+      }
     } else if (settings::weight_window_checkpoint_collision) {
       // if collision checkpointing is on, apply weight window
       apply_weight_window(p, ww);

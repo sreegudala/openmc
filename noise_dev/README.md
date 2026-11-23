@@ -34,6 +34,7 @@ tracked in [`STATUS.md`](STATUS.md).
     chosen cells. Each batch runs `nskip` static generations, and the last
     of these banks complex source sites at its collisions in perturbed
     cells.
+- **Weight windows** act on $|w|$ and keep the phase: splits divide Re and Im alike, roulette is norm-based. In noise mode they are absolute, in units of the source weight scale (not renormalised per fission site), and inside their mesh they replace the noise roulette. Generators are not supported.
 - **Adjoint.** The adjoint (bilinear convention: transposed operator at the
   same +ω) is the same solver run on a transposed library built by
   `common/adjoint_noise_lib.py`. The transport code does not change.
@@ -100,6 +101,7 @@ neutrons. Noise mode is multigroup only.
 | `stageN/run_stageN.py` | Stage driver: builds the cases, runs the replicas, scores against the references, writes `stageN_log_*.md`. |
 | `stageN/stageN_gate.md` | Gate record: which runs count, disposition of any misses, and the verdict. |
 | `stage6/cortex.py`, `run_stage6c.py` | The CORTEX assembly benchmark and the comparison with Abeille. |
+| `prep9b/` | Stage 9b preparation (amendment 2026-11-22): `run_n3c.py`, weight windows with complex weights (deep-penetration slab, adjoint efficiency). |
 | `tacc/` | SLURM job script, the Abeille build script, and TACC instructions (`tacc/README.md`). |
 
 ## Verification approach

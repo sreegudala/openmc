@@ -175,6 +175,8 @@ Gate run: TACC (pending).
 ## N3c. Weight windows in noise mode: audit
 
 **Do they apply?** Yes, but incorrectly. Nothing in noise mode disables them.
+
+*Correction (2026-11-22).* This was wrong: `read_noise_settings` (src/settings.cpp) has refused weight windows in noise mode since the first noise commit (9e4eb3096), so they never ran. The list below is still what would have gone wrong. Windows were also forcing OpenMC's shared secondary bank, which noise mode refuses. Both are resolved by the N3c implementation (`prep9b/`, design doc amendment 2026-11-22).
 - After `noise::sample_reaction`, `collision_mg` (src/physics_mg.cpp:36–45)
   calls `apply_weight_window`.
 - Surface crossings call `apply_weight_windows` (src/particle.cpp:391).

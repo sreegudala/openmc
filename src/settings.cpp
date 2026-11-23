@@ -1369,7 +1369,9 @@ void read_settings_xml(pugi::xml_node root)
     } else {
       settings::use_shared_secondary_bank = val;
     }
-  } else if (settings::weight_windows_on) {
+  } else if (settings::weight_windows_on && !check_for_node(root, "noise")) {
+    // (Noise mode transports secondaries, splits included, in the particle's
+    // local bank within its own fission-generation loop.)
     if (run_mode == RunMode::EIGENVALUE) {
       warning(
         "Shared secondary bank is not supported in eigenvalue calculations. "
@@ -1468,9 +1470,6 @@ void read_noise_settings(pugi::xml_node node)
     if (t < INFTY) {
       fatal_error("Time cutoffs cannot be used in noise mode.");
     }
-  }
-  if (weight_windows_on) {
-    fatal_error("Weight windows are not supported in noise mode.");
   }
   if (!reduce_tallies) {
     fatal_error("Tally reduction cannot be disabled in noise mode.");

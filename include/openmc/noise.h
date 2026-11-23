@@ -59,7 +59,14 @@ void initialize();
 void sample_reaction(Particle& p);
 
 //! Norm-based Russian roulette on |w| using the survival-biasing cutoffs.
+//! With weight windows on, it is applied only outside the window mesh
+//! (from collision_mg); inside, the windows take its place.
 void roulette(Particle& p);
+
+//! Weight scale of the current noise source: 1 for an external source,
+//! the batch's mean source modulus for a sampled source. Roulette
+//! thresholds and weight windows are in units of it.
+double source_weight_scale();
 
 //! Bank noise fission sites for the next fission generation
 //!
