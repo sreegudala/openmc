@@ -1,4 +1,5 @@
-"""Sync test: the copied adjoint_lib.py reproduces ce_mg_triga's step3a.
+"""Sync tests: the copied adjoint_lib.py reproduces ce_mg_triga's step3a
+(make_adjoint_library on a whole file, transpose_library on TRIGA's arrays).
 
 The fixture (fixtures/adjoint_lib/) holds a random 4-group library and its
 transpose made by ce_mg_triga's own make_adjoint_library (commit in
@@ -51,3 +52,17 @@ def test_copy_matches_step3a(tmp_path):
     report = adjoint_lib.make_adjoint_library(FIXTURE / "forward.h5", out)
     assert report["materials"] == 2
     assert_same_library(out, FIXTURE / "adjoint_step3a.h5")
+
+
+def test_transpose_library_matches_triga_arrays():
+    """The copied pure function against ce_mg_triga's own array fixture
+    (tests/fixtures/sync_arrays.npz, made with the pre-split code)."""
+    d = np.load(FIXTURE / "sync_arrays.npz")
+    for m in (0, 1):
+        NA, aA, MA, _ = adjoint_lib.transpose_library(
+            d[f"m{m}_N"], d[f"m{m}_total"], d[f"m{m}_absorption"],
+            d[f"m{m}_multiplicity"])
+        assert np.array_equal(NA, d[f"m{m}_N_adj"])
+        assert np.array_equal(aA, d[f"m{m}_absorption_adj"])
+        assert np.array_equal(MA, d[f"m{m}_multiplicity_adj"])
+    assert d["m0_multiplicity_adj"].max() > 1.05

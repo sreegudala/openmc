@@ -17,6 +17,7 @@ it whenever adjoint_lib.py is refreshed:
 """
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -81,10 +82,25 @@ def main():
 
     commit = subprocess.run(["git", "-C", str(triga), "rev-parse", "HEAD"],
                             capture_output=True, text=True).stdout.strip()
+    copied = re.search(r"Source commit: ([0-9a-f]{40})",
+                       (HERE.parent.parent / "adjoint_lib.py").read_text())[1]
+    dirty = subprocess.run(["git", "-C", str(triga), "status", "--porcelain",
+                            "step3a_adjoint.py", "common.py"],
+                           capture_output=True, text=True).stdout.strip()
+    if commit != copied or dirty:
+        raise SystemExit(f"ce_mg_triga is at {commit} (modified: {dirty or 'no'}"
+                         f"), adjoint_lib.py was copied from {copied}")
     random_library(HERE / "forward.h5")
     report = step3a_adjoint.make_adjoint_library(HERE / "forward.h5",
                                                  HERE / "adjoint_step3a.h5")
-    (HERE / "SOURCE").write_text(f"ce_mg_triga {commit}\n{report}\n")
+    # TRIGA's own array-level fixture for transpose_library
+    arrays = subprocess.run(["git", "-C", str(triga), "show",
+                             f"{commit}:tests/fixtures/sync_arrays.npz"],
+                            capture_output=True, check=True).stdout
+    (HERE / "sync_arrays.npz").write_bytes(arrays)
+    (HERE / "SOURCE").write_text(f"ce_mg_triga {commit}\n{report}\n"
+                                 "sync_arrays.npz: ce_mg_triga "
+                                 "tests/fixtures/sync_arrays.npz\n")
     print(f"fixture from ce_mg_triga {commit}: {report}")
 
 

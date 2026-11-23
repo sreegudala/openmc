@@ -1,17 +1,19 @@
 # Copied from ce_mg_triga (TRIGA proposal repository):
-#   common.py         lines 415-450  FISSION_DATASETS, remove_fission
-#   step3a_adjoint.py lines 68-171   _nbins, _dense, _write_sparse,
-#                                    make_adjoint_library
-# Source commit: e018a837d4859a68e1ec6ab9417f09b667941727 (2026-11-19)
-# Copied: 2026-11-20
+#   common.py         lines 448-484  FISSION_DATASETS, remove_fission
+#   step3a_adjoint.py lines 69-206   _nbins, _dense, _write_sparse,
+#                                    transpose_library, make_adjoint_library
+# Source commit: 540ab07832bafeea48927861e14ea34d4531ddd7 (2026-11-20)
+# Copied: 2026-11-22 (refresh; previous copy e018a83, 2026-11-20)
 #
 # Copied verbatim. Do not edit here; extend in adjoint_noise_lib.py.
-# Changes go into ce_mg_triga first and are then copied over again (refresh
-# the fixture in tests/ with it; see test_adjoint_lib.py).
+# Changes go into ce_mg_triga first (logged in its CHANGELOG_transpose.md)
+# and are then copied over again; refresh the fixtures with it (see
+# test_adjoint_lib.py and fixtures/adjoint_lib/).
 #
-# Only the import block below is new. The copied code is the forward-to-
-# adjoint transformation of a fission-free MGXS library, as used for the
-# TRIGA source-to-detector matrix G:
+# Only the import block below is new. transpose_library is the pure
+# forward-to-adjoint transformation of one material's scattering data, as
+# used for the TRIGA source-to-detector matrix G; make_adjoint_library is
+# the HDF5 wrapper that applies it to every material and removes fission:
 #   - nu-scatter transposed, g -> g' becomes g' -> g, each transfer keeping
 #     its mu histogram (or Legendre moments);
 #   - absorption' = max(0, total - in-scatter), in-scatter_g =
@@ -21,18 +23,20 @@
 #     nu-scatter);
 #   - total unchanged;
 #   - all FISSION_DATASETS removed and fissionable = False.
-# Checked against the code on 2026-11-20: matches the brief's description.
+# The 2026-11-20 refresh split transpose_library out of make_adjoint_library
+# with unchanged arithmetic (ce_mg_triga CHANGELOG_transpose.md); both sync
+# fixtures reproduce exactly.
 # Note: the transposed absorption is a balance quantity, not a reaction rate;
 # it can be zeroed where in-scatter exceeds total.
 """Adjoint (transposed) MGXS library, copied verbatim from ce_mg_triga."""
 import os
-import shutil
 from pathlib import Path
 
 import h5py
 import numpy as np
 
 
+# ---------------------------------------------------------------------------
 FISSION_DATASETS = ("nu-fission", "chi", "fission", "kappa-fission",
                     "prompt-nu-fission", "delayed-nu-fission", "chi-prompt", "chi-delayed",
                     "beta", "decay-rate")
@@ -71,7 +75,6 @@ def remove_fission(src, dst):
     return changed
 
 
-# ---------------------------------------------------------------- library
 def _nbins(group):
     fmt = group.attrs["scatter_format"].decode() if isinstance(
         group.attrs["scatter_format"], bytes) else group.attrs["scatter_format"]
@@ -117,8 +120,56 @@ def _write_sparse(sd, N, M):
     sd.create_dataset("multiplicity_matrix", data=np.concatenate(mult))
 
 
+def transpose_library(N, total, absorption=None, multiplicity=None, scatter_format="histogram"):
+    """Adjoint cross sections of one material at one temperature. Pure: arrays in, arrays out.
+
+    Copied verbatim by the noise project (mg-complex-weight-noise-solver); keep it free of
+    paths and I/O, and log every change in CHANGELOG_transpose.md (brief v20).
+
+    N[g, g', b]   forward nu-scatter g -> g', groups highest energy first, last axis the
+                  angular bins (histogram bins of mu, or Legendre moments P0..PL)
+    total[g]      total cross section (kept)
+    absorption    forward absorption (only for the balance diagnostic)
+    multiplicity  forward multiplicity matrix (only for the balance diagnostic; default 1)
+
+    The adjoint transfer g -> g' is the forward g' -> g, with the same angular bins (the
+    kernel depends only on mu). OpenMC MG scatters with probability 1 - Sa/St and
+    multiplies the weight by the multiplicity, so with in-scatter_g = sum_g'' nuSs(g'' -> g):
+        Sa'_g = max(0, St_g - in-scatter_g),  c_g = in-scatter_g / (St_g - Sa'_g)  (1 if 0/0)
+    gives exactly in-scatter_g / St_g secondaries per collision; c_g >= 1 and is constant
+    across row g of the adjoint multiplicity matrix. The stored matrix stays nu-scatter.
+
+    Returns (N_adj[g, g', b], absorption_adj[g], multiplicity_adj[g, g'], info) with info =
+    {"balance_error": max |(Sa + sum nuSs/M)/St - 1| of the forward data (nan if absorption
+    is None), "groups_absorption_zeroed": int, "max_multiplicity": float}.
+    """
+    N = np.asarray(N, float)
+    total = np.asarray(total, float)
+    G = len(total)
+    if N.shape[:2] != (G, G):
+        raise ValueError(f"scatter matrix {N.shape} does not match {G} groups")
+    N0 = N[..., 0] if scatter_format == "legendre" else N.sum(2)
+    info = {"balance_error": float("nan")}
+    if absorption is not None:
+        M = np.ones((G, G)) if multiplicity is None else np.asarray(multiplicity, float)
+        scat = np.where(M > 0, N0 / np.where(M > 0, M, 1), 0).sum(1)
+        ok = (total > 0) & (scat > 0)
+        info["balance_error"] = (float(np.abs((np.asarray(absorption) + scat)[ok] / total[ok] - 1).max())
+                                 if ok.any() else 0.0)
+    NA = N.transpose(1, 0, 2).copy()
+    inscatter = N0.sum(0)                                 # sum_g'' nuSs(g'' -> g)
+    abs_adj = np.maximum(0.0, total - inscatter)
+    branch = total - abs_adj
+    c = np.where(branch > 0, inscatter / np.where(branch > 0, branch, 1), 1.0)
+    info["groups_absorption_zeroed"] = int(np.sum((inscatter > total) & (total > 0)))
+    info["max_multiplicity"] = float(c.max())
+    MA = np.repeat(c[:, None], G, axis=1)
+    return NA, abs_adj, MA, info
+
+
 def make_adjoint_library(src, dst):
-    """Adjoint, fission-free copy of a forward MGXS library (see module docstring)."""
+    """Adjoint, fission-free copy of a forward MGXS library (see module docstring); the
+    file I/O around transpose_library."""
     dst = Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = dst.with_name(f".{dst.name}.tmp.{os.getpid()}")
@@ -136,25 +187,12 @@ def make_adjoint_library(src, dst):
                     continue
                 sd = data["scatter_data"]
                 N, M = _dense(sd, G, nb)
-                N0 = N[..., 0] if fmt == "legendre" else N.sum(2)
-                total, absorption = data["total"][()], data["absorption"][()]
-                # forward consistency: absorption + scatter (nu-scatter / multiplicity) = total
-                scat = np.where(M > 0, N0 / np.where(M > 0, M, 1), 0).sum(1)
-                ok = (total > 0) & (scat > 0)
-                if ok.any():
-                    err = float(np.abs((absorption + scat)[ok] / total[ok] - 1).max())
-                    if err > report["max_balance_error"]:
-                        report["max_balance_error"] = err
-                        report["worst_balance_material"] = name
-                NA = N.transpose(1, 0, 2).copy()
-                inscatter = N0.sum(0)                         # sum_g'' nuSs(g'' -> g)
-                abs_adj = np.maximum(0.0, total - inscatter)
-                branch = total - abs_adj
-                c = np.where(branch > 0, inscatter / np.where(branch > 0, branch, 1), 1.0)
-                report["groups_absorption_zeroed"] += int(np.sum((inscatter > total) & (total > 0)))
-                report["max_multiplicity"] = max(report["max_multiplicity"], float(c.max()))
-                MA = np.repeat(c[:, None], G, axis=1)
-                # stored matrix is nu-scatter; OpenMC divides by multiplicity to sample
+                NA, abs_adj, MA, info = transpose_library(N, data["total"][()], data["absorption"][()], M, fmt)
+                if info["balance_error"] > report["max_balance_error"]:
+                    report["max_balance_error"] = info["balance_error"]
+                    report["worst_balance_material"] = name
+                report["groups_absorption_zeroed"] += info["groups_absorption_zeroed"]
+                report["max_multiplicity"] = max(report["max_multiplicity"], info["max_multiplicity"])
                 _write_sparse(sd, NA, MA)
                 del data["absorption"]
                 data.create_dataset("absorption", data=abs_adj)

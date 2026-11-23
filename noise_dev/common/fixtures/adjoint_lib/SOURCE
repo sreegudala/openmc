@@ -1,2 +1,3 @@
-ce_mg_triga e018a837d4859a68e1ec6ab9417f09b667941727
+ce_mg_triga 540ab07832bafeea48927861e14ea34d4531ddd7
 {'materials': 2, 'max_balance_error': 0.0, 'max_multiplicity': 1.9680745356368743, 'groups_absorption_zeroed': 3}
+sync_arrays.npz: ce_mg_triga tests/fixtures/sync_arrays.npz
