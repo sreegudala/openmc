@@ -869,6 +869,17 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
 
 **Log and plot.** Source tally (Re and Im) across the layer against $c_n$; maps per harmonic; FOM with cancellation; statement of which $c_n$ form was used.
 
+  - *Amendment (2026-11-23, Stage 8): the sampling rule and input.*
+    - **Coefficient.** For an interface at $x_0+\varepsilon\sin\omega_0t$ with material L on the negative side, a point at $u=(x-x_0)/\varepsilon\in(-1,1)$ is in L while $\sin\omega_0t>u$. The Fourier coefficients of that indicator, in the convention of Section 1 (factor $2\pi$, so $\sin\omega_0t\to-i\pi$ at $n=1$ as in Stage 6c), are
+      $$c_n(u)=\frac{1}{in}\big(e^{-in\alpha}-(-1)^ne^{in\alpha}\big),\quad \alpha=\arcsin u,\qquad c_n=\frac2n\sin(n\arccos u)\,e^{-in\pi/2}.$$
+      This gives $c_1=-2i\sqrt{1-u^2}$ and $c_2=-\sin 2\alpha$, the arccos form of Abeille (derived here; Stage 0 recorded the same). $\delta\Sigma_x(x,n\omega_0)=(\Sigma_x^L-\Sigma_x^R)\,c_n(u)$ for every reaction, with fission and scattering as group matrices.
+    - **Sampling rule.** This replaces "the weights use the ratio of $\delta\Sigma_x$ to that material's $\Sigma_x$", which fails where the material present has no fission (the water side of a fuel–water layer). The source density is $-\delta\mathcal L\,\psi_0$, and a static collision of weight $w$ in material M samples the collision density $\Sigma_t^M\psi_0$. At such a collision inside the layer, bank:
+      - a copy with weight $-w\,c_n(\Sigma_t^L-\Sigma_t^R)/\Sigma_t^M$;
+      - for each X in {L (+), R (−)}, one scatter site sampled from X's own kernel (outgoing group and angle) with weight $\pm w\,c_n\,\text{mult}\,(\Sigma_t^X-\Sigma_a^X)/\Sigma_t^M$;
+      - for each fissionable X, $\lfloor\nu\Sigma_f^X/(\Sigma_t^Mk)+\xi\rfloor$ fission sites from X's spectra, with weight $\pm w\,c_n$ and the delayed factor of X's family.
+
+      Each term is unbiased for $\Delta[\cdot]\,\psi_0$ for any angular distribution, so no union material is needed. Without a temperature or angle dependence, X's data are evaluated at the particle's temperature and direction.
+    - **Input.** A `perturbations` entry with `cells` (the cells filling the swept layer $|x-x_0|<\varepsilon$, on both sides) and `vibration` = {`axis`, `position` $x_0$, `amplitude` $\varepsilon$, `harmonic` $n$, `negative_material`, `positive_material`}. The run's frequency is $n\omega_0/2\pi$. One interface per entry. The cells of different entries may not overlap, so each face of a vibrating pin is its own entry; overlapping layers would sum, but none are needed here.
   - *Amendment (2026-11-22b, Stage 8): pin orientation and the second estimator.*
     - **Orientation resolved by symmetry.**
       - The paper text has the pin at $(-2.52,-2.52)$ cm (two cells left of and two below centre) moving along $x$.

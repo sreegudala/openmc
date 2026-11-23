@@ -130,7 +130,52 @@ void read_perturbation(pugi::xml_node node)
   pt.total = read_complex_array(node, "total");
   pt.scatter = read_complex_array(node, "scatter");
   pt.fission = read_complex_array(node, "fission");
+  if (check_for_node(node, "vibration")) {
+    auto v = node.child("vibration");
+    auto& vib = pt.vibration;
+    std::string axis = get_node_value(v, "axis", true, true);
+    if (axis == "x") {
+      vib.axis = 0;
+    } else if (axis == "y") {
+      vib.axis = 1;
+    } else if (axis == "z") {
+      vib.axis = 2;
+    } else {
+      fatal_error("A noise vibration axis must be x, y or z.");
+    }
+    vib.position = std::stod(get_node_value(v, "position"));
+    vib.amplitude = std::stod(get_node_value(v, "amplitude"));
+    vib.harmonic = std::stoi(get_node_value(v, "harmonic"));
+    vib.negative_id = std::stoi(get_node_value(v, "negative_material"));
+    vib.positive_id = std::stoi(get_node_value(v, "positive_material"));
+    if (vib.amplitude <= 0.0)
+      fatal_error("A noise vibration amplitude must be positive.");
+    if (vib.harmonic < 1)
+      fatal_error("A noise vibration harmonic must be at least 1.");
+    if (!pt.total.empty() || !pt.scatter.empty() || !pt.fission.empty()) {
+      fatal_error("A noise vibration takes no total, scatter or fission "
+                  "amplitudes: they follow from its two materials.");
+    }
+  }
   perturbations.push_back(pt);
+}
+
+std::complex<double> vibration_coefficient(int n, double u)
+{
+  if (std::abs(u) >= 1.0)
+    return 0.0;
+  // (2/n) sin(n arccos u) e^{-i n pi/2} (design doc amendment 2026-11-23)
+  double s = 2.0 / n * std::sin(n * std::acos(u));
+  switch (n % 4) {
+  case 0:
+    return {s, 0.0};
+  case 1:
+    return {0.0, -s};
+  case 2:
+    return {-s, 0.0};
+  default:
+    return {0.0, s};
+  }
 }
 
 void reset_settings()
@@ -233,6 +278,26 @@ void initialize()
           "Cell {} belongs to more than one noise perturbation.", id));
       }
       cell_perturbation[it->second] = ip;
+    }
+    if (pt.is_vibration()) {
+      auto& vib = pt.vibration;
+      for (auto [id, index] : {std::pair<int32_t, int*> {vib.negative_id,
+                                 &vib.negative},
+             std::pair<int32_t, int*> {vib.positive_id, &vib.positive}}) {
+        auto it = model::material_map.find(id);
+        if (it == model::material_map.end()) {
+          fatal_error(fmt::format(
+            "Material {} of a noise vibration does not exist.", id));
+        }
+        *index = it->second;
+        // Multigroup data exist only for materials that fill a cell
+        if (data::mg.macro_xs_[*index].get_xsdata().empty()) {
+          fatal_error(fmt::format(
+            "Material {} of a noise vibration fills no cell, so it has no "
+            "multigroup data.",
+            id));
+        }
+      }
     }
     for (auto* v : {&pt.total, &pt.scatter, &pt.fission}) {
       if (v->empty()) {
@@ -355,6 +420,66 @@ void create_fission_sites(Particle& p)
 
 namespace {
 
+using cplx = std::complex<double>;
+
+//! Append one sampled noise source site to the thread's source bank and add
+//! its weight to perturbation ip's running sum
+void bank_source_site(Particle& p, int ip, Position r, Direction u, int gout,
+  int dg, cplx wc)
+{
+  SourceSite site;
+  site.r = r;
+  site.u = u;
+  site.E = gout;
+  site.particle = ParticleType::neutron();
+  site.time = p.time();
+  site.wgt = wc.real();
+  site.wgt_im = wc.imag();
+  site.delayed_group = dg + 1;
+  site.parent_id = simulation::work_index[mpi::rank] + p.current_work();
+  site.progeny_id = p.n_progeny()++;
+  thread_source_banks[thread_num()].push_back(site);
+  double* sum =
+    &source_sum_thread[2 * (thread_num() * perturbations.size() + ip)];
+  sum[0] += wc.real();
+  sum[1] += wc.imag();
+}
+
+//! Isotropic direction from two random numbers
+Direction isotropic_direction(uint64_t* seed)
+{
+  double mu = 2. * prn(seed) - 1.;
+  double phi = 2. * PI * prn(seed);
+  return {mu, std::sqrt(1. - mu * mu) * std::cos(phi),
+    std::sqrt(1. - mu * mu) * std::sin(phi)};
+}
+
+//! Fission sites from material macro at a collision: n = floor(nuSigma_f /
+//! (Sigma_t^M k) + xi) sites with weight wc, delayed ones times
+//! lambda/(lambda + i omega). Sigma_t^M is the material of the collision.
+void bank_fission_sites(Particle& p, int ip, Mgxs& macro, int t, int a,
+  double nu_fission, double total_m, cplx wc)
+{
+  double nu_t = nu_fission / (total_m * settings::noise_keff);
+  int nu = static_cast<int>(nu_t);
+  if (prn(p.current_seed()) <= (nu_t - nu))
+    nu++;
+  int g = p.g();
+  for (int i = 0; i < nu; ++i) {
+    int dg;
+    int gout;
+    macro.sample_fission_energy(g, dg, gout, p.current_seed(), t, a);
+    cplx wf = wc;
+    if (dg != -1 && omega_noise != 0.0) {
+      double lam =
+        macro.get_xs(MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
+      wf *= lam / cplx(lam, omega_noise);
+    }
+    bank_source_site(
+      p, ip, p.r(), isotropic_direction(p.current_seed()), gout, dg, wf);
+  }
+}
+
 //! Bank noise source sites at a static collision of weight w inside a
 //! perturbed cell (design doc Section 2.4): a copy with -dSigma_t/Sigma_t w,
 //! fission sites with w dSigma_f/Sigma_f (delayed ones times
@@ -362,7 +487,6 @@ namespace {
 //! w yield (Sigma_s/Sigma_t) dSigma_s/Sigma_s.
 void sample_source_sites(Particle& p, int ip)
 {
-  using cplx = std::complex<double>;
   const auto& pt = perturbations[ip];
   int g = p.g();
   double w = p.wgt();
@@ -370,55 +494,16 @@ void sample_source_sites(Particle& p, int ip)
   auto& macro = data::mg.macro_xs_[p.material()];
   int t = p.mg_xs_cache().t;
   int a = p.mg_xs_cache().a;
-  auto& bank = thread_source_banks[thread_num()];
-  int64_t parent = simulation::work_index[mpi::rank] + p.current_work();
-  int64_t i_sum = thread_num() * perturbations.size() + ip;
-  double* sum = &source_sum_thread[2 * i_sum];
-
-  auto push = [&](Position r, Direction u, int gout, int dg, cplx wc) {
-    SourceSite site;
-    site.r = r;
-    site.u = u;
-    site.E = gout;
-    site.particle = ParticleType::neutron();
-    site.time = p.time();
-    site.wgt = wc.real();
-    site.wgt_im = wc.imag();
-    site.delayed_group = dg + 1;
-    site.parent_id = parent;
-    site.progeny_id = p.n_progeny()++;
-    bank.push_back(site);
-    sum[0] += wc.real();
-    sum[1] += wc.imag();
-  };
 
   // Copy: -dSigma_t psi_0
   if (pt.total[g] != 0.0) {
-    push(p.r(), p.u(), g, -1, -pt.total[g] * w);
+    bank_source_site(p, ip, p.r(), p.u(), g, -1, -pt.total[g] * w);
   }
 
   // Fission: + chi dnuSigma_f phi_0 / k
   if (pt.fission[g] != 0.0 && macro.fissionable) {
-    double nu_t = xs.nu_fission / (xs.total * settings::noise_keff);
-    int nu = static_cast<int>(nu_t);
-    if (prn(p.current_seed()) <= (nu_t - nu))
-      nu++;
-    for (int i = 0; i < nu; ++i) {
-      int dg;
-      int gout;
-      macro.sample_fission_energy(g, dg, gout, p.current_seed(), t, a);
-      cplx wc = pt.fission[g] * w;
-      if (dg != -1 && omega_noise != 0.0) {
-        double lam =
-          macro.get_xs(MgxsType::DECAY_RATE, g, nullptr, nullptr, &dg, t, a);
-        wc *= lam / cplx(lam, omega_noise);
-      }
-      double mu = 2. * prn(p.current_seed()) - 1.;
-      double phi = 2. * PI * prn(p.current_seed());
-      Direction u {mu, std::sqrt(1. - mu * mu) * std::cos(phi),
-        std::sqrt(1. - mu * mu) * std::sin(phi)};
-      push(p.r(), u, gout, dg, wc);
-    }
+    bank_fission_sites(
+      p, ip, macro, t, a, xs.nu_fission, xs.total, pt.fission[g] * w);
   }
 
   // Scatter: + dSigma_s (kernel) psi_0
@@ -429,7 +514,63 @@ void sample_source_sites(Particle& p, int ip)
     double mult = 1.0;
     macro.sample_scatter(g, gout, mu, mult, p.current_seed(), t, a);
     Direction u = rotate_angle(p.u(), mu, nullptr, p.current_seed());
-    push(p.r(), u, gout, -1, pt.scatter[g] * (w * mult * sigma_s / xs.total));
+    bank_source_site(p, ip, p.r(), u, gout, -1,
+      pt.scatter[g] * (w * mult * sigma_s / xs.total));
+  }
+}
+
+//! Bank noise source sites at a static collision inside the swept layer of
+//! a vibrating interface (design doc amendment 2026-11-23). With
+//! c = c_n(u), M the material of the collision and L (+), R (-) the
+//! negative- and positive-side materials: a copy with
+//! -w c (Sigma_t^L - Sigma_t^R) / Sigma_t^M; per X in {L, R} a scatter sampled
+//! from X's kernel with +-w c mult Sigma_s^X / Sigma_t^M and fission sites
+//! from X's data with nuSigma_f^X / (Sigma_t^M k) sites of weight +-w c.
+void sample_vibration_sites(Particle& p, int ip)
+{
+  const auto& vib = perturbations[ip].vibration;
+  double u = (p.r()[vib.axis] - vib.position) / vib.amplitude;
+  cplx c = vibration_coefficient(vib.harmonic, u);
+  if (c == 0.0)
+    return;
+  int g = p.g();
+  cplx wc = p.wgt() * c;
+  double total_m = p.macro_xs().total;
+
+  double total_x[2];
+  int materials[2] = {vib.negative, vib.positive};
+  double sign[2] = {1.0, -1.0};
+  for (int k = 0; k < 2; ++k) {
+    auto& macro = data::mg.macro_xs_[materials[k]];
+    int t = macro.get_temperature_index(p.sqrtkT());
+    int a = macro.get_angle_index(p.u());
+    total_x[k] = macro.get_xs(MgxsType::TOTAL, g, t, a);
+    cplx wk = sign[k] * wc;
+
+    // Scatter from X's own kernel
+    double sigma_s = total_x[k] - macro.get_xs(MgxsType::ABSORPTION, g, t, a);
+    if (sigma_s > 0.0) {
+      int gout;
+      double mu;
+      double mult = 1.0;
+      macro.sample_scatter(g, gout, mu, mult, p.current_seed(), t, a);
+      Direction dir = rotate_angle(p.u(), mu, nullptr, p.current_seed());
+      bank_source_site(
+        p, ip, p.r(), dir, gout, -1, wk * (mult * sigma_s / total_m));
+    }
+
+    // Fission from X's own data
+    if (macro.fissionable) {
+      double nu_fission = macro.get_xs(MgxsType::NU_FISSION, g, t, a);
+      if (nu_fission > 0.0)
+        bank_fission_sites(p, ip, macro, t, a, nu_fission, total_m, wk);
+    }
+  }
+
+  // Copy: -dSigma_t psi_0
+  double d_total = total_x[0] - total_x[1];
+  if (d_total != 0.0) {
+    bank_source_site(p, ip, p.r(), p.u(), g, -1, -wc * (d_total / total_m));
   }
 }
 
@@ -440,8 +581,13 @@ void sample_reaction(Particle& p)
   // Sampled noise source at static collisions in perturbed cells
   if (sampling) {
     int ip = cell_perturbation[p.lowest_coord().cell()];
-    if (ip >= 0)
-      sample_source_sites(p, ip);
+    if (ip >= 0) {
+      if (perturbations[ip].is_vibration()) {
+        sample_vibration_sites(p, ip);
+      } else {
+        sample_source_sites(p, ip);
+      }
+    }
   }
 
   // Fission branching: sites go to the next fission generation

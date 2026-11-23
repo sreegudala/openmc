@@ -256,3 +256,129 @@ def test_noise_refuses_weight_window_generators(run_in_tmpdir):
     # Generators tally a real flux; noise mode must refuse them
     with pytest.raises(RuntimeError, match='[Gg]enerators'):
         _ww_model(windows=False, generator=True).run()
+
+
+def test_settings_noise_vibration_roundtrip(run_in_tmpdir):
+    fuel = openmc.Material(material_id=21)
+    s = openmc.Settings()
+    vib = {'axis': 'y', 'position': -2.1543, 'amplitude': 0.2,
+           'harmonic': 2, 'negative_material': fuel,
+           'positive_material': 22}
+    s.noise = {'frequency': 2.0,
+               'perturbations': [{'cells': [5, 6], 'vibration': vib}]}
+    s.export_to_xml()
+    p = openmc.Settings.from_xml().noise['perturbations'][0]
+    assert p['cells'] == [5, 6]
+    assert p['vibration'] == {'axis': 'y', 'position': -2.1543,
+                              'amplitude': 0.2, 'harmonic': 2,
+                              'negative_material': 21,
+                              'positive_material': 22}
+
+
+@pytest.mark.parametrize('vib', [
+    {'axis': 'w', 'position': 0.0, 'amplitude': 0.2, 'harmonic': 1,
+     'negative_material': 1, 'positive_material': 2},
+    {'axis': 'x', 'position': 0.0, 'amplitude': -0.2, 'harmonic': 1,
+     'negative_material': 1, 'positive_material': 2},
+    {'axis': 'x', 'position': 0.0, 'amplitude': 0.2, 'harmonic': 0,
+     'negative_material': 1, 'positive_material': 2},
+    {'axis': 'x', 'position': 0.0, 'amplitude': 0.2, 'harmonic': 1}])
+def test_settings_noise_vibration_invalid(vib):
+    s = openmc.Settings()
+    with pytest.raises((ValueError, TypeError)):
+        s.noise = {'perturbations': [{'cells': [1], 'vibration': vib}]}
+    with pytest.raises(ValueError):
+        s.noise = {'perturbations': [{'cells': [1], 'total': 0.1,
+                                      'vibration': {}}]}
+
+
+def _vibration_model(harmonic):
+    """Homogeneous infinite medium of M (k_inf = 1, noise keff 1.5); the
+    layer cells |x| < 0.2 carry a vibration between two other materials L
+    (fissile) and R, so the sampled source has a closed-form expectation."""
+    groups = openmc.mgxs.EnergyGroups([0.0, 20.0e6])
+    lib = openmc.MGXSLibrary(groups)
+    data = {'M': (1.0, 0.5, 0.5), 'L': (1.2, 0.4, 0.9), 'R': (0.7, 0.6, 0.0)}
+    for name, (tot, scat, nuf) in data.items():
+        xs = openmc.XSdata(name, groups)
+        xs.order = 0
+        xs.set_total([tot])
+        xs.set_absorption([tot - scat])
+        xs.set_scatter_matrix([[[scat]]])
+        xs.set_inverse_velocity([1.0e-5])
+        if nuf > 0:
+            xs.set_nu_fission([nuf])
+            xs.set_chi([1.0])
+        lib.add_xsdata(xs)
+    lib.export_to_hdf5('mgxs.h5')
+    mats = {}
+    for name in data:
+        m = openmc.Material(name=name)
+        m.add_macroscopic(name)
+        mats[name] = m
+    materials = openmc.Materials(mats.values())
+    materials.cross_sections = 'mgxs.h5'
+    planes = [openmc.XPlane(x) for x in (-5, -0.2, 0.0, 0.2, 5)]
+    planes[0].boundary_type = planes[-1].boundary_type = 'reflective'
+    yz = openmc.model.RectangularPrism(10, 10, axis='x',
+                                       boundary_type='reflective')
+    cells = [openmc.Cell(fill=mats['M'], region=+a & -b & -yz)
+             for a, b in zip(planes[:-1], planes[1:])]
+    # L and R must fill cells to have data: a separate reflective box that
+    # no particle reaches
+    far = [openmc.XPlane(x) for x in (20, 21, 22)]
+    far[0].boundary_type = far[-1].boundary_type = 'reflective'
+    side = [openmc.Cell(fill=mats[k], region=+a & -b & -yz)
+            for k, a, b in (('L', far[0], far[1]), ('R', far[1], far[2]))]
+    geom = openmc.Geometry(cells + side)
+    settings = openmc.Settings()
+    settings.energy_mode = 'multi-group'
+    settings.run_mode = 'fixed source'
+    settings.particles = 4000
+    settings.batches = 10
+    settings.source = openmc.IndependentSource(
+        space=openmc.stats.Box((-5, -5, -5), (5, 5, 5)),
+        energy=openmc.stats.Discrete([1e6], [1]))
+    # Without delayed neutrons the |w| fission game at keff = k_inf is
+    # divergent for any omega > 0; keff = 1.5 (subcritical noise problem)
+    # and omega / v = 0.25 give a generation ratio of about 0.83
+    settings.noise = {
+        'frequency': 2.5e4 / (2 * np.pi), 'keff': 1.5, 'nskip': 3,
+        'static_inactive': 10,
+        'perturbations': [{'cells': cells[1:3], 'vibration': {
+            'axis': 'x', 'position': 0.0, 'amplitude': 0.2,
+            'harmonic': harmonic, 'negative_material': mats['L'],
+            'positive_material': mats['R']}}]}
+    tally = openmc.Tally(name='layer')
+    tally.filters = [openmc.CellFilter(cells[1:3]), openmc.NoisePhaseFilter(),
+                     openmc.ComplexPartFilter()]
+    tally.scores = ['flux']
+    return openmc.Model(geom, materials, settings, openmc.Tallies([tally]))
+
+
+@pytest.mark.parametrize('harmonic', [1, 2])
+def test_noise_vibration_source_integral(run_in_tmpdir, harmonic):
+    # Sum of sampled source weights per static particle against
+    # int c_n du / 2 x (-dSigma_t + dSigma_s + dnuSigma_f / k) x Phi_layer,
+    # with int c_1 du = -i pi and int c_2 du = 0
+    import h5py
+    sp = _vibration_model(harmonic).run()
+    with openmc.StatePoint(sp) as s:
+        st = openmc.noise.complex_tally_stats(s.get_tally(name='layer'))
+        n = s.n_particles
+    phi = st['re'].reshape(2, 2)[:, 0].sum()          # static bin, both cells
+    s_phi = np.hypot(*st['re_std'].reshape(2, 2)[:, 0])
+    with h5py.File(sp, 'r') as f:
+        ss = f['noise/source_sum'][()].reshape(-1, 2) / n
+    src = ss[:, 0] + 1j * ss[:, 1]
+    bracket = -(1.2 - 0.7) + (0.4 - 0.6) + 0.9 / 1.5
+    ref = (-1j * np.pi / 2 if harmonic == 1 else 0.0) * bracket * phi
+    s_src = np.array([src.real.std(ddof=1), src.imag.std(ddof=1)]) \
+        / np.sqrt(src.size)
+    s_ref = abs(bracket * np.pi / 2) * s_phi if harmonic == 1 else 0.0
+    m = src.mean()
+    # c_2 is real, so Im is exactly 0 on both sides for n = 2. The net source
+    # is a small difference of large terms (about 9 % sigma here; a run with
+    # 20000 x 40 gives 1.016 +- 0.020 of the expectation).
+    assert abs(m.real - ref.real) <= 4 * np.hypot(s_src[0], s_ref)
+    assert abs(m.imag - ref.imag) <= 4 * np.hypot(s_src[1], s_ref)

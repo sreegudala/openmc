@@ -302,7 +302,15 @@ class Settings:
             ``'cells'`` (iterable of :class:`openmc.Cell` or cell IDs) and
             any of ``'total'``, ``'scatter'``, ``'fission'``: the complex
             relative amplitudes :math:`\\delta\\Sigma_{x,g}/\\Sigma_{x,g}`,
-            a scalar or one value per group. Each batch runs static
+            a scalar or one value per group. Instead of amplitudes, a
+            ``'vibration'`` dict describes a planar interface vibrating as
+            :math:`x_0+\\varepsilon\\sin\\omega_0 t`: ``'axis'`` ('x', 'y'
+            or 'z'), ``'position'`` (:math:`x_0`, cm), ``'amplitude'``
+            (:math:`\\varepsilon`, cm), ``'harmonic'`` (:math:`n\\ge1`; the
+            run's frequency is :math:`n\\omega_0/2\\pi`),
+            ``'negative_material'`` and ``'positive_material'`` (the
+            materials on either side). Its cells must fill the swept layer
+            :math:`|x-x_0|<\\varepsilon`. Each batch runs static
             generations (noise physics at zero frequency, fission divided by
             ``keff``) from a source renormalised to ``particles`` sites; the
             source is sampled at the collisions of the last one. The external
@@ -1447,14 +1455,43 @@ class Settings:
                                 raise TypeError(
                                     f'Noise perturbation {k} must be a '
                                     'complex scalar or one value per group')
+                        elif k == 'vibration':
+                            self._check_noise_vibration(v)
                         else:
                             raise ValueError(
                                 f'Unknown noise perturbation key: {k}')
                     if 'cells' not in pert:
                         raise ValueError('A noise perturbation needs cells')
+                    if 'vibration' in pert and any(
+                            k in pert for k in ('total', 'scatter',
+                                                'fission')):
+                        raise ValueError(
+                            'A noise vibration takes no total, scatter or '
+                            'fission amplitudes')
             else:
                 raise ValueError(f'Unknown noise key: {key}')
         self._noise = dict(noise)
+
+    @staticmethod
+    def _check_noise_vibration(v):
+        cv.check_type('noise vibration', v, Mapping)
+        keys = {'axis', 'position', 'amplitude', 'harmonic',
+                'negative_material', 'positive_material'}
+        if set(v) != keys:
+            raise ValueError(f'A noise vibration needs exactly the keys '
+                             f'{sorted(keys)}')
+        cv.check_value('noise vibration axis', v['axis'], ('x', 'y', 'z'))
+        cv.check_type('noise vibration position', v['position'], Real)
+        cv.check_type('noise vibration amplitude', v['amplitude'], Real)
+        cv.check_greater_than('noise vibration amplitude', v['amplitude'],
+                              0.0)
+        cv.check_type('noise vibration harmonic', v['harmonic'], Integral)
+        cv.check_greater_than('noise vibration harmonic', v['harmonic'], 1,
+                              True)
+        for side in ('negative_material', 'positive_material'):
+            if not isinstance(v[side], (Integral, openmc.Material)):
+                raise TypeError(f'Noise vibration {side} must be a '
+                                'material or material ID')
 
     @property
     def weight_window_checkpoints(self) -> dict:
@@ -2090,6 +2127,11 @@ class Settings:
                                 sub.text = ' '.join(
                                     str(c.id if isinstance(c, openmc.Cell)
                                         else c) for c in v)
+                            elif k == 'vibration':
+                                for vk, vv in v.items():
+                                    if isinstance(vv, openmc.Material):
+                                        vv = vv.id
+                                    sub.set(vk, str(vv))
                             else:
                                 arr = np.atleast_1d(np.asarray(v, complex))
                                 sub.text = ' '.join(
@@ -2633,9 +2675,20 @@ class Settings:
                 elif child.tag == 'perturbation':
                     pert = {}
                     for c in child:
-                        vals = c.text.split()
+                        vals = (c.text or '').split()
                         if c.tag == 'cells':
                             pert['cells'] = [int(x) for x in vals]
+                        elif c.tag == 'vibration':
+                            a = c.attrib
+                            pert['vibration'] = {
+                                'axis': a['axis'],
+                                'position': float(a['position']),
+                                'amplitude': float(a['amplitude']),
+                                'harmonic': int(a['harmonic']),
+                                'negative_material':
+                                    int(a['negative_material']),
+                                'positive_material':
+                                    int(a['positive_material'])}
                         else:
                             x = np.array([float(t) for t in vals])
                             pert[c.tag] = x[0::2] + 1j * x[1::2]

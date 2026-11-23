@@ -24,15 +24,37 @@ namespace noise {
 // Sampled noise source (design doc Stage 6)
 //==============================================================================
 
+//! Planar interface vibrating as x0 + eps sin(omega_0 t) along one axis
+//! (design doc Stage 8, amendment 2026-11-23). Harmonic n has
+//! dSigma_x = (Sigma_x^L - Sigma_x^R) c_n(u), u = (x - x0) / eps, with L the
+//! material on the negative side and c_n = (2/n) sin(n arccos u) e^{-i n pi/2}.
+struct Vibration {
+  int axis {-1};            //!< 0, 1, 2 for x, y, z; -1: not a vibration
+  double position {0.0};    //!< interface position x0 [cm]
+  double amplitude {0.0};   //!< eps [cm]
+  int harmonic {0};         //!< n >= 1
+  int32_t negative_id {-1}; //!< material ID on the negative side (L)
+  int32_t positive_id {-1}; //!< material ID on the positive side (R)
+  int negative {-1};        //!< material index of L
+  int positive {-1};        //!< material index of R
+};
+
 //! Cross-section perturbation of a set of cells, sampled as a noise source at
 //! static collisions (Rouchon et al.; table of design doc Section 2.4).
-//! Relative complex amplitudes per group; an empty vector means zero.
+//! Relative complex amplitudes per group; an empty vector means zero. A
+//! vibration instead derives its amplitudes from two materials' data.
 struct Perturbation {
   vector<int32_t> cell_ids;             //!< cell IDs from the input
   vector<std::complex<double>> total;   //!< dSigma_t / Sigma_t per group
   vector<std::complex<double>> scatter; //!< dSigma_s / Sigma_s per group
   vector<std::complex<double>> fission; //!< dSigma_f / Sigma_f per group
+  Vibration vibration;                  //!< used when vibration.axis >= 0
+
+  bool is_vibration() const { return vibration.axis >= 0; }
 };
+
+//! Harmonic coefficient c_n(u) of a vibrating interface, zero for |u| >= 1
+std::complex<double> vibration_coefficient(int n, double u);
 
 extern vector<Perturbation> perturbations; //!< perturbations sampled as source
 extern int nskip;           //!< static generations per noise batch (>= 1)
