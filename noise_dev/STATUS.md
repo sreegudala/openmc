@@ -15,30 +15,18 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 5 | Weight cancellation | **Passed**; 5d gated on Im FOM (amendment) | `stage5/stage5_gate.md` |
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c: weight windows are not complex-safe and noise mode refuses them | `stage7/stage7_prep_log.md` |
-| 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **In progress**: 7a 10/10 (job 3600163); slab job 19/20 (job 3600164). The miss is 7d forward at 1 Hz (+1.5 %, z 3.5), being rerun with fresh seeds at 4× particles | `stage7/stage7_log_7a.md`, `stage7/stage7_log_7b_lf_7c_7f.md` |
+| 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 8 | Vibrating component | Not started | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: Stage 7 rerun, then the gate record
+## Next: Stage 8 (vibrating component)
 
-- **7d forward 1 Hz.** The forward field is uniformly 1.5 % above S_N
-  (integral z +3.5, Hotelling p 0.010, shape fine). The adjoint at 1 Hz
-  agrees with S_N (−0.5 ± 1.0 %), and the reciprocity test passes
-  (t 1.88).
-  - Not a heavy tail: the replicas lie within 0.97–1.05.
-  - Not the reference: S_N k is converged to 3e-7, and 1.5 % would need
-    a k error of 8e-5 (0.19 % per 1e-5 at 1 Hz).
-  - Rerun with fresh seeds at 4× particles:
-    `run_stage7.py --only 7b --freqs-7b 1 --particles 80000 --base-seed
-    100001 --tag p80k`.
-- **7c scattering case.** The forward sampled source has 40–150 % σ: the
-  copy (−δΣ_t ψ₀) and the sampled scatter (+δΣ_s) cancel on average, so
-  the paired test passes without power. The contraction matches S_N
-  within 1σ (0.8–1.3 %) at all three frequencies, with P1 = 27 % of the
-  answer; a wrong P1 sign or factor would be 40–65σ off. The gate record
-  will state this. Cancelling sources of this kind return in Stage 8
-  (vibration).
-- Then `stage7/stage7_gate.md` and Stage 8.
+- First settle the open geometry question below: the vibrating-pin
+  orientation differs between the paper summary (x) and Abeille's input
+  (y).
+- The vibration source has the same cancelling structure as the 7c
+  scattering case: two large sampled terms of opposite sign. Expect a
+  noisy forward estimate and plan the statistics for it.
 
 ## Open items and known limitations
 
@@ -103,6 +91,10 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-22: **Stage 7 gate passed.** Rerun of 7b/7d at 1 Hz (job
+  3602980, 4× particles, fresh seeds): forward −0.29 % from S_N (z −1.0),
+  reciprocity −0.43 % ± 0.5 %. The first-run +1.5 % was 20-replica
+  spread, as in 3b and 5a.
 - 2026-11-21: Stage 7 gate runs (commit c12f32cd8). 7a 10/10, pooled z
   mean +0.38, std 0.99; N3 amplitudes within 0.55 %, CORTEX within
   about 1 σ (1 %). Slab job 19/20:
