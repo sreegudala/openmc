@@ -45,10 +45,14 @@ class Slab:
         widths, mats, cells = [], [], []
         self.materials = []
         for width, mat, n in regions:
-            if mat not in self.materials:
+            # materials are matched by identity (Material holds arrays, so
+            # == is elementwise)
+            idx = [i for i, m in enumerate(self.materials) if m is mat]
+            if not idx:
                 self.materials.append(mat)
+                idx = [len(self.materials) - 1]
             widths += [width / n] * n
-            cells += [self.materials.index(mat)] * n
+            cells += [idx[0]] * n
         self.h = np.array(widths)
         self.mat_index = np.array(cells)
         self.edges = x0 + np.concatenate([[0.0], np.cumsum(self.h)])

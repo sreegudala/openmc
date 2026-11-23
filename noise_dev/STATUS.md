@@ -17,19 +17,24 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c (weight windows) moved to 9b prep | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 waits for the regenerated library | `prep9b/n3c_gate.md` |
-| 8 | Vibrating component | Not started | |
+| 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **In progress**: vibration source implemented (unit tests pass; Stage 6 sampling bit-identical); drivers `stage8/run_stage8.py` (8a, 8b, probe) and `run_stage8c.py` (CORTEX vs Abeille) smoke-tested; σ probe and Abeille references go to TACC | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: Stage 8 (vibrating component)
+## Next: Stage 8 probe and references (TACC)
 
-- N3c is closed; N5 runs when ce_mg_triga delivers the regenerated
-  CASMO-70 library.
-- Stage 8 (amendment 2026-11-22b):
-  - 8c uses Abeille's orientation;
-  - measure the forward σ of each gated quantity on a short run first and
-    size the gate runs from it;
-  - the gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, δS from
-    tallies) as a second estimator.
+- **Probe** (amendment 2026-11-22b: measure the forward σ first):
+  - `run_stage8.py --only probe` (slab, ε = 0.2, n = 1 and 2);
+  - `run_stage8c.py openmc --batches 60 --cancellation 170 --tag probe`;
+  - `run_stage8c.py adjoint --batches-adj 20 --tag probe`.
+- **Abeille references**, about 21 h each, independent of the sizing:
+  `run_stage8c.py abeille --harmonics 1` and `--harmonics 2`.
+- **Then the gate runs**, sized from the probe: 8a (with the adjoint
+  contraction), 8b, and 8c at cancellation 170 and 340.
+- **Checked deterministically:**
+  - the 8-bin P0 + P1 + fission contraction reproduces S_N's exact
+    detector response to about 1e-3 for n = 1 and 2 and ε = 0.05 and 0.2,
+    with each part large;
+  - S_N n = 1 is linear in ε to 1e-4, and n = 2 is O(ε²).
 
 ## Open items and known limitations
 
@@ -87,6 +92,16 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-23: Stage 8 started.
+  - Amendment 2026-11-23: c_n derived (arccos form; Abeille's conventions
+    confirmed in its source, Δ = negative − positive). Each side's own
+    kernel and fission data are sampled at collisions in the layer, which
+    works where the material present has no fission.
+  - Implemented the vibration source with unit tests: the source integral
+    is −iπ/2 for n = 1 and 0 for n = 2.
+  - `ref_sn1d` now accepts several materials (it compared materials
+    elementwise).
+  - Drivers for 8a/8b/probe and 8c are smoke-tested.
 - 2026-11-23: **N3c passed** (jobs 3606525, 3606526).
   - Deep-penetration water slab: windowed detector within 0.11 % / 0.18 %
     of S_N; on vs off consistent; FOM ×240 at 1 kHz and ×8600 at 10 kHz.

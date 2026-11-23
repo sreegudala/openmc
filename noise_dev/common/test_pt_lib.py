@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -58,3 +59,18 @@ def test_complex_wrapper():
         real = tuple(np.real(a) for a in args)
         np.testing.assert_allclose(pt_terms_complex(*real),
                                    pt_lib.pt_terms(*real), rtol=1e-15)
+
+
+def test_fission_term():
+    from adjoint_noise_lib import pt_fission_complex
+    rng = np.random.default_rng(3)
+    V, G = 4, 3
+    F = rng.random((V, G, 4))
+    A = rng.random((V, G, 4)) + 1j * rng.random((V, G, 4))
+    w = rng.random(V)
+    dP = rng.random((V, G, G)) + 1j * rng.random((V, G, G))
+    ref = sum(w[v] * A[v, :, 0] @ dP[v] @ F[v, :, 0] for v in range(V))
+    assert pt_fission_complex(F, A, w, dP) == pytest.approx(ref, rel=1e-13)
+    assert pt_fission_complex(F, A, w, dP[0]) == pytest.approx(
+        sum(w[v] * A[v, :, 0] @ dP[0] @ F[v, :, 0] for v in range(V)),
+        rel=1e-13)

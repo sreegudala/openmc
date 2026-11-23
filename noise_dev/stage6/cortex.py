@@ -58,9 +58,23 @@ def library(path):
     make_library({"fuel": cortex_fuel(), "water": cortex_water()}, path)
 
 
+PIN_CENTRE = (-HALF_LAT + (PERTURBED[0] + 0.5) * PITCH,
+              -HALF_LAT + (PERTURBED[1] + 0.5) * PITCH)      # (2.52, -2.52)
+
+
+def vibration_layers(eps):
+    """The two swept layers of the pin vibrating along y (Abeille's
+    noise_vibration.yaml): (name, y0, negative material, positive
+    material) in global coordinates."""
+    yc = PIN_CENTRE[1]
+    return [("top", yc + HALF_PIN, "fuel", "water"),
+            ("bottom", yc - HALF_PIN, "water", "fuel")]
+
+
 def model(lib, particles, batches, frequency=1.0, eta=1.0, nskip=20,
           static_inactive=200, amplitudes=None, cancellation=None,
-          mesh_shape=(138, 138), run_mode="noise"):
+          mesh_shape=(138, 138), run_mode="noise", vibration=None,
+          library_only_noise=False):
     """Build the CORTEX model.
 
     amplitudes : dict of complex relative amplitudes dSigma_x / Sigma_x for
@@ -68,6 +82,11 @@ def model(lib, particles, batches, frequency=1.0, eta=1.0, nskip=20,
         at its fundamental, -i pi epsilon_x).
     cancellation : int n for an n x n x 1 cancellation mesh, or None.
     run_mode : 'noise' or 'eigenvalue' (static check).
+    vibration : dict(eps=..., harmonic=n) for the pin vibrating along y
+        instead of the oscillation (Stage 8c); the perturbed pin is split
+        into the swept-layer cells and each face is one perturbation.
+    library_only_noise : if True, return the noise model without any
+        perturbation (for adjoint runs with an external source).
     """
     mats = {}
     for name in ("fuel", "water"):
@@ -89,6 +108,28 @@ def model(lib, particles, batches, frequency=1.0, eta=1.0, nskip=20,
 
     u_pin, _ = pin("pin")
     u_pert, perturbed_cell = pin("perturbed pin")
+    layer_cells = {}
+    if vibration is not None:
+        # perturbed pin split at y = +-(HALF_PIN -+ eps) in local coordinates
+        eps = vibration["eps"]
+        ys = [openmc.YPlane(y) for y in (-HALF_PIN - eps, -HALF_PIN + eps,
+                                         HALF_PIN - eps, HALF_PIN + eps)]
+        xin = +xl & -xh
+        cells = [
+            openmc.Cell(name="bottom layer water", fill=mats["water"],
+                        region=xin & +ys[0] & -yl),
+            openmc.Cell(name="bottom layer fuel", fill=mats["fuel"],
+                        region=xin & +yl & -ys[1]),
+            openmc.Cell(name="pin core", fill=mats["fuel"],
+                        region=xin & +ys[1] & -ys[2]),
+            openmc.Cell(name="top layer fuel", fill=mats["fuel"],
+                        region=xin & +ys[2] & -yh),
+            openmc.Cell(name="top layer water", fill=mats["water"],
+                        region=xin & +yh & -ys[3]),
+            openmc.Cell(name="pin water", fill=mats["water"],
+                        region=~(xin & +ys[0] & -ys[3]))]
+        u_pert = openmc.Universe(cells=cells)
+        layer_cells = {"bottom": cells[0:2], "top": cells[3:5]}
     u_hole = openmc.Universe(cells=[openmc.Cell(name="water hole",
                                                 fill=mats["water"])])
     u_outer = openmc.Universe(cells=[openmc.Cell(name="blade",
@@ -146,11 +187,27 @@ def model(lib, particles, batches, frequency=1.0, eta=1.0, nskip=20,
         return mdl
 
     s.run_mode = "fixed source"
-    if amplitudes is None:
-        amplitudes = {k: -1j * np.pi * v for k, v in EPS.items()}
-    noise = {"frequency": frequency, "eta": eta, "keff": KEFF,
-             "nskip": nskip, "static_inactive": static_inactive,
-             "perturbations": [{"cells": [perturbed_cell], **amplitudes}]}
+    if library_only_noise:
+        noise = {"frequency": frequency, "eta": eta, "keff": KEFF}
+    elif vibration is not None:
+        noise = {"frequency": frequency, "eta": eta, "keff": KEFF,
+                 "nskip": nskip, "static_inactive": static_inactive,
+                 "perturbations": [
+                     {"cells": layer_cells[name], "vibration": {
+                         "axis": "y", "position": y0,
+                         "amplitude": vibration["eps"],
+                         "harmonic": vibration["harmonic"],
+                         "negative_material": mats[neg],
+                         "positive_material": mats[pos]}}
+                     for name, y0, neg, pos in vibration_layers(
+                         vibration["eps"])]}
+    else:
+        if amplitudes is None:
+            amplitudes = {k: -1j * np.pi * v for k, v in EPS.items()}
+        noise = {"frequency": frequency, "eta": eta, "keff": KEFF,
+                 "nskip": nskip, "static_inactive": static_inactive,
+                 "perturbations": [{"cells": [perturbed_cell],
+                                    **amplitudes}]}
     if cancellation:
         cm = openmc.RegularMesh()
         cm.lower_left = (-HALF_BOX, -HALF_BOX, -2)
@@ -159,8 +216,9 @@ def model(lib, particles, batches, frequency=1.0, eta=1.0, nskip=20,
         noise["cancellation_mesh"] = cm
     s.noise = noise
     t = openmc.Tally(name="flux")
-    t.filters = [openmc.MeshFilter(mesh), efilter, openmc.NoisePhaseFilter(),
-                 openmc.ComplexPartFilter()]
+    phase = [] if library_only_noise else [openmc.NoisePhaseFilter()]
+    t.filters = [openmc.MeshFilter(mesh), efilter] + phase + [
+        openmc.ComplexPartFilter()]
     t.scores = ["flux"]
     mdl.tallies = openmc.Tallies([t])
     return mdl

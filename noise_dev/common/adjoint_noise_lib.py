@@ -277,3 +277,30 @@ def pt_terms_complex(F, A, w, dSt, dN0, dN1):
     out = (P(A.real, Xr) - P(A.imag, Xi)
            + 1j * (P(A.imag, Xr) + P(A.real, Xi)))
     return complex(out[0]), complex(out[1])
+
+
+def pt_fission_complex(F, A, w, dP):
+    """Fission part of the first-order detector change, which pt_lib.pt_terms
+    does not have: sum_v w_v sum_{g,g'} A0[v,g] dP[v,g,g'] F0[v,g'].
+
+    Fission emission is isotropic, so only the scalar moments enter.
+
+    Parameters
+    ----------
+    F, A : (V, G, >=1) forward (real) and adjoint (complex) moments per
+        voxel, library order; moment 0 is the scalar flux.
+    w : (V,) voxel weights (1/V for a product of voxel integrals).
+    dP : (G, G) or (V, G, G) complex change of the production operator
+        [g_out, g_in], already divided by k and including the delayed
+        factors lambda / (lambda + i omega), e.g.
+        (chi_omega(L, w) - chi_omega(R, w)) / k times c_n.
+
+    Returns
+    -------
+    complex
+    """
+    F0 = np.real(np.asarray(F))[:, :, 0] * np.asarray(w, float)[:, None]
+    A0 = np.asarray(A, complex)[:, :, 0]
+    dP = np.asarray(dP, complex)
+    gg = "gh" if dP.ndim == 2 else "vgh"
+    return complex(np.einsum(f"vg,{gg},vh->", A0, dP, F0))
