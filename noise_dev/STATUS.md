@@ -20,21 +20,31 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **In progress**: vibration source implemented (unit tests pass; Stage 6 sampling bit-identical); drivers `stage8/run_stage8.py` (8a, 8b, probe) and `run_stage8c.py` (CORTEX vs Abeille) smoke-tested; σ probe and Abeille references go to TACC | |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: Stage 8 probe and references (TACC)
+## Next: Stage 8 gate runs (sized from the probe, jobs 3607700–3607705)
 
-- **Probe** (amendment 2026-11-22b: measure the forward σ first):
-  - `run_stage8.py --only probe` (slab, ε = 0.2, n = 1 and 2);
-  - `run_stage8c.py openmc --batches 60 --cancellation 170 --tag probe`;
-  - `run_stage8c.py adjoint --batches-adj 20 --tag probe`.
-- **Abeille references**, about 21 h each, independent of the sizing:
-  `run_stage8c.py abeille --harmonics 1` and `--harmonics 2`.
-- **Then the gate runs**, sized from the probe: 8a (with the adjoint
-  contraction), 8b, and 8c at cancellation 170 and 340.
-- **Checked deterministically:**
-  - the 8-bin P0 + P1 + fission contraction reproduces S_N's exact
-    detector response to about 1e-3 for n = 1 and 2 and ε = 0.05 and 0.2,
-    with each part large;
-  - S_N n = 1 is linear in ε to 1e-4, and n = 2 is O(ε²).
+- **Slab probe** (20 × 20 × 60000, ε = 0.2), both against S_N:
+  - n = 1: detector σ 5.8 %, field 6 % per bin;
+  - n = 2: detector σ 33 %.
+- **Slab sizing:** 8a + 8b run in one job at 100000 particles × 400 batches
+  (33×), aiming at a detector σ of about 1 % for n = 1 and 6 % for n = 2,
+  2 % at ε = 0.05. The adjoint runs for the contraction use 20000 × 400.
+- **8c probe** (OpenMC, 20 × 60 × 20000, cancellation 170): the forward
+  estimate is hopeless at this cost.
+  - Median σ per cell is 63 % on Abeille's thermal cells, and 485 % at the
+    central-hole detector.
+  - Abeille n = 1 (600 batches, 8 h × 20 replicas) has 28 % (thermal) and
+    97 % (fast) per cell.
+  - On the same cells OpenMC's FOM is 14× Abeille's. Coarse-graining does
+    not help: the replica noise is one global mode, while the signal
+    (a translating pin) has almost no global component.
+- **8c adjoint contraction for the same detector:** σ 8 % (n = 1) and 1 %
+  (n = 2), about 700× the forward FOM including the adjoint run's time.
+  n = 2 exceeds n = 1: the faces' n = 1 terms cancel (dipole), their n = 2
+  terms add.
+- **8c power is limited by the reference.** A two-sample test against
+  Abeille at 28 % per cell resolves only gross errors, so the slab (8a, 8b,
+  exact S_N) carries the verification weight. The 8c compute plan is open.
+- **Abeille n = 2 failed** after 8 h (exit 1); its replica logs are needed.
 
 ## Open items and known limitations
 
@@ -92,6 +102,11 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-24: Stage 8 probes (jobs 3607700–3607705).
+  - Slab: both harmonics agree with S_N.
+  - 8c: the forward estimate is very noisy, for Abeille too; the adjoint
+    contraction is about 700× more efficient for a detector.
+  - Abeille n = 1 done (600 batches); n = 2 crashed.
 - 2026-11-23: Stage 8 started.
   - Amendment 2026-11-23: c_n derived (arccos form; Abeille's conventions
     confirmed in its source, Δ = negative − positive). Each side's own
