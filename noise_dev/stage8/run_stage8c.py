@@ -327,12 +327,18 @@ def collect_abeille(n, args, times=None):
     work = HERE / f"work_8c_abeille_n{n}{args.sfx}"
     vals, nb, tt, missing = [], [], [], []
     for d in sorted(work.glob("rep*")):
-        if not (d / "out.h5").exists():
+        # a replica that died may leave an out.h5 without results
+        ok = False
+        if (d / "out.h5").exists():
+            with h5py.File(d / "out.h5", "r") as f:
+                if "results" in f and "real-flux" in f["results"]:
+                    r = f["results"]
+                    vals.append(r["real-flux/avg"][()]
+                                + 1j * r["imag-flux/avg"][()])
+                    ok = True
+        if not ok:
             missing.append(d.name)
             continue
-        with h5py.File(d / "out.h5", "r") as f:
-            r = f["results"]
-            vals.append(r["real-flux/avg"][()] + 1j * r["imag-flux/avg"][()])
         text = (d / "abeille.log").read_text()
         nb.append(text.count("Simulated noise batch"))
         tt.append((times or {}).get(d.name, np.nan))
