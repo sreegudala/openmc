@@ -306,27 +306,41 @@ def run_abeille(args):
         def one(d):
             t0 = time.time()
             with open(d / "abeille.log", "w") as fh:
-                subprocess.run([str(exe), "--input", "input.yaml",
-                                "--threads", str(harness.THREADS),
-                                "--output", "out.h5"], cwd=d, stdout=fh,
-                               stderr=subprocess.STDOUT, check=True)
+                res = subprocess.run([str(exe), "--input", "input.yaml",
+                                      "--threads", str(harness.THREADS),
+                                      "--output", "out.h5"], cwd=d,
+                                     stdout=fh, stderr=subprocess.STDOUT)
+            if res.returncode != 0:
+                log(f"  Abeille replica {d.name} failed (code "
+                    f"{res.returncode}); see its abeille.log")
             return time.time() - t0
         with ThreadPoolExecutor(max_workers=min(harness.JOBS,
                                                 args.reps)) as ex:
             times = list(ex.map(one, dirs))
-        vals, nb = [], []
-        for d in dirs:
-            with h5py.File(d / "out.h5", "r") as f:
-                r = f["results"]
-                vals.append(r["real-flux/avg"][()]
-                            + 1j * r["imag-flux/avg"][()])
-            nb.append((d / "abeille.log").read_text()
-                      .count("Simulated noise batch"))
-        out = HERE / f"stage8c_abeille_n{n}{args.sfx}.npz"
-        np.savez(out, vals=np.array(vals), batches=np.array(nb),
-                 times=np.array(times))
-        log(f"Abeille n={n}: {args.reps} replicas, batches {nb} -> "
-            f"{out.name}")
+        collect_abeille(n, args, dict(zip([d.name for d in dirs], times)))
+
+
+def collect_abeille(n, args, times=None):
+    """Gather the replicas of an Abeille run that wrote out.h5 (a replica
+    can die on Abeille's own lost-particle check, e.g. a corner
+    reflection)."""
+    work = HERE / f"work_8c_abeille_n{n}{args.sfx}"
+    vals, nb, tt, missing = [], [], [], []
+    for d in sorted(work.glob("rep*")):
+        if not (d / "out.h5").exists():
+            missing.append(d.name)
+            continue
+        with h5py.File(d / "out.h5", "r") as f:
+            r = f["results"]
+            vals.append(r["real-flux/avg"][()] + 1j * r["imag-flux/avg"][()])
+        text = (d / "abeille.log").read_text()
+        nb.append(text.count("Simulated noise batch"))
+        tt.append((times or {}).get(d.name, np.nan))
+    out = HERE / f"stage8c_abeille_n{n}{args.sfx}.npz"
+    np.savez(out, vals=np.array(vals), batches=np.array(nb),
+             times=np.array(tt))
+    log(f"Abeille n={n}: {len(vals)} replicas collected, batches {nb}; "
+        f"missing {missing or 'none'} -> {out.name}")
 
 
 # ---------------------------------------------------------------- analyze
@@ -470,7 +484,7 @@ def analyze(args):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("mode", choices=["openmc", "adjoint", "abeille",
-                                    "analyze"])
+                                    "abeille-collect", "analyze"])
     p.add_argument("--harmonics", default="1,2")
     p.add_argument("--reps", type=int, default=20)
     p.add_argument("--base-seed", type=int, default=1)
@@ -506,6 +520,9 @@ def main():
         run_adjoint(args)
     elif args.mode == "abeille":
         run_abeille(args)
+    elif args.mode == "abeille-collect":
+        for n in args.harm:
+            collect_abeille(n, args)
     else:
         n_fail = analyze(args)
     tag = args.mode + args.sfx

@@ -44,7 +44,11 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 - **8c power is limited by the reference.** A two-sample test against
   Abeille at 28 % per cell resolves only gross errors, so the slab (8a, 8b,
   exact S_N) carries the verification weight. The 8c compute plan is open.
-- **Abeille n = 2 failed** after 8 h (exit 1); its replica logs are needed.
+- **Abeille n = 2:** 19 of 20 replicas finished (about 7.8 h each).
+  Replica 19 died on Abeille's own lost-particle check, a corner
+  reflection at z = 2, y = −10.79 (`surface_tracker.cpp:86`); our input
+  is fine. The driver now collects the replicas that finished
+  (`run_stage8c.py abeille-collect`).
 - **Open discrepancy at the pin (probe level).**
   - Thermal n = 1 at r < 0.6 cm: Abeille 0.074 ± 0.006 against OpenMC
     0.025 ± 0.015 (t ≈ 3). Beyond 1.5 cm both are at noise level.
