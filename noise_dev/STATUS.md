@@ -110,6 +110,20 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-24: **8a and 8b passed 10/10** (job 3609592, 100000 × 400 static
+  particles, cancellation 1 cm).
+  - 8a n = 1: detector within 0.05 % of S_N (σ 0.9 %); forward against
+    contraction within 0.16 %; contraction within 0.21 % of S_N (σ 0.18 %).
+  - 8a n = 2: forward σ 8.9 %, contraction σ 0.26 %, consistent with S_N.
+  - 8b: response / ε at 0.05 and 0.1 cm is 1.005 ± 0.014 and
+    0.990 ± 0.012 of the 0.2 cm value.
+  - 8c diagnostic (job 3609594): OpenMC at cancellation 170 and 340
+    agree with each other. Against Abeille the near-pin dipole has the
+    same shape but about 3× the amplitude in Abeille (thermal upper half
+    of the pin cell: 2.29 ± 0.20 against 0.95 ± 0.27, about 4σ).
+  - Abeille on the 8a slab (local) agrees with S_N (0.973), and on a 1-D
+    vibrating plate (two opposite interfaces, local) its dipole swing
+    matches S_N (0.12 against 0.125). OpenMC on the plate is running.
 - 2026-11-24: Stage 8 probes (jobs 3607700–3607705).
   - Slab: both harmonics agree with S_N.
   - 8c: the forward estimate is very noisy, for Abeille too; the adjoint
