@@ -67,16 +67,26 @@ HP = cortex.HALF_PIN
 # 138 x 138 map, so that the forward map, Abeille's map and the adjoint
 # contraction cover exactly the same region
 H_MAP = 2 * cortex.HALF_BOX / 138
-DETECTORS = {"centre": (0.0, 0.0), "pin": cortex.PIN_CENTRE}
+# name: (centre, half: None for the whole lattice element, "top"/"bottom"
+# for its upper or lower half in y; the n = 1 field of a pin vibrating in y
+# is a dipole, so a symmetric detector over the pin nearly cancels)
+DETECTORS = {"centre": ((0.0, 0.0), None), "pin": (cortex.PIN_CENTRE, None),
+             "pin_top": (cortex.PIN_CENTRE, "top"),
+             "pin_bottom": (cortex.PIN_CENTRE, "bottom")}
 
 
 def det_bins(name):
     """Map bin index ranges [i0, i1) in x and y of detector `name`."""
+    centre, half = DETECTORS[name]
     out = []
-    for c in DETECTORS[name]:
+    for c in centre:
         lo = int(round((c - cortex.PITCH / 2 + cortex.HALF_BOX) / H_MAP))
         hi = int(round((c + cortex.PITCH / 2 + cortex.HALF_BOX) / H_MAP))
         out.append((lo, hi))
+    if half is not None:
+        (y0, y1) = out[1]
+        mid = (y0 + y1) // 2
+        out[1] = (mid, y1) if half == "top" else (y0, mid)
     return out                                   # [(ix0, ix1), (iy0, iy1)]
 
 

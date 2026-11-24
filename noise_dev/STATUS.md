@@ -123,7 +123,13 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
     of the pin cell: 2.29 ± 0.20 against 0.95 ± 0.27, about 4σ).
   - Abeille on the 8a slab (local) agrees with S_N (0.973), and on a 1-D
     vibrating plate (two opposite interfaces, local) its dipole swing
-    matches S_N (0.12 against 0.125). OpenMC on the plate is running.
+    matches S_N (0.12 against 0.125). OpenMC on the same plate (10
+    replicas, 0.125 cm cancellation) gives 0.1292 ± 0.0072 against S_N
+    0.1262 and Abeille 0.1197, so all three agree in 1-D. The 8c factor of
+    about 3 is specific to 2-D (lattice, finite layer width, or
+    cancellation on a 170 × 170 mesh). Next: adjoint contraction for
+    half-pin detectors (no cancellation anywhere), and an OpenMC forward
+    run without cancellation.
 - 2026-11-24: Stage 8 probes (jobs 3607700–3607705).
   - Slab: both harmonics agree with S_N.
   - 8c: the forward estimate is very noisy, for Abeille too; the adjoint
