@@ -352,7 +352,7 @@ def analyze(args):
         for canc in args.cancellation:
             A[canc], a, norm = normalised_openmc(
                 HERE / f"stage8c_openmc_n{n}_c{canc}{args.sfx}.npz")
-        pb = HERE / f"stage8c_abeille_n{n}{args.sfx}.npz"
+        pb = HERE / f"stage8c_abeille_n{n}{args.abeille_sfx}.npz"
         if pb.exists():
             b = np.load(pb)
             B = np.transpose(b["vals"], (0, 1, 3, 2)) / norm_b
@@ -391,7 +391,7 @@ def analyze(args):
                     f"Re={info['z_int'][0]:+.2f} Im={info['z_int'][1]:+.2f};"
                     f" Hotelling p={info['hotelling'][2]:.3f}")
                 gate.append((f"8c n={n} {name} cancellation meshes", ok))
-        pa = HERE / f"stage8c_adjoint_n{n}{args.sfx}.npz"
+        pa = HERE / f"stage8c_adjoint_n{n}{args.adjoint_sfx}.npz"
         if pa.exists():
             adj = np.load(pa)
             for canc in args.cancellation:
@@ -436,8 +436,15 @@ def main():
     p.add_argument("--abeille-ignored", type=int, default=100)
     p.add_argument("--abeille-particles", type=int, default=100000)
     p.add_argument("--max-minutes", type=float, default=1260.0)
+    p.add_argument("--adjoint-tag", default=None,
+                   help="analyze: tag of the adjoint results (default --tag)")
+    p.add_argument("--abeille-tag", default=None,
+                   help="analyze: tag of the Abeille results (default --tag)")
     args = p.parse_args()
     args.sfx = f"_{args.tag}" if args.tag else ""
+    sfx = lambda t: args.sfx if t is None else (f"_{t}" if t else "")
+    args.adjoint_sfx = sfx(args.adjoint_tag)
+    args.abeille_sfx = sfx(args.abeille_tag)
     args.harm = [int(x) for x in args.harmonics.split(",")]
     args.cancellation = [int(x) for x in args.cancellation.split(",")]
     n_fail = 0
