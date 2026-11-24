@@ -114,6 +114,13 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-24: 8c n = 2 against Abeille (19 replicas collected).
+  - Field checks pass, but with low power.
+  - Thermal pin-cell sum: adjoint contraction (no cancellation)
+    −0.311 ± 0.003; OpenMC forward −0.357 ± 0.216 (mesh 170) and
+    −0.185 ± 0.392 (mesh 340), both consistent; Abeille −0.684 ± 0.179,
+    2.1σ above the contraction.
+  - The n = 1 half-pin contraction runs are still to come.
 - 2026-11-24: **8a and 8b passed 10/10** (job 3609592, 100000 × 400 static
   particles, cancellation 1 cm).
   - 8a n = 1: detector within 0.05 % of S_N (σ 0.9 %); forward against
