@@ -63,8 +63,32 @@ NL = 8                                   # bins across each layer
 EPS = 0.2
 F0 = 1.0
 HP = cortex.HALF_PIN
-DET_HALF = cortex.PITCH / 2              # central water hole
-V_DET = (2 * DET_HALF)**2 * 4.0          # cm^3 (z from -2 to 2)
+# Detectors: a lattice element (1.26 cm) snapped to the bins of the
+# 138 x 138 map, so that the forward map, Abeille's map and the adjoint
+# contraction cover exactly the same region
+H_MAP = 2 * cortex.HALF_BOX / 138
+DETECTORS = {"centre": (0.0, 0.0), "pin": cortex.PIN_CENTRE}
+
+
+def det_bins(name):
+    """Map bin index ranges [i0, i1) in x and y of detector `name`."""
+    out = []
+    for c in DETECTORS[name]:
+        lo = int(round((c - cortex.PITCH / 2 + cortex.HALF_BOX) / H_MAP))
+        hi = int(round((c + cortex.PITCH / 2 + cortex.HALF_BOX) / H_MAP))
+        out.append((lo, hi))
+    return out                                   # [(ix0, ix1), (iy0, iy1)]
+
+
+def det_box(name):
+    (ix0, ix1), (iy0, iy1) = det_bins(name)
+    e = lambda i: -cortex.HALF_BOX + i * H_MAP
+    return (e(ix0), e(iy0), -2.0), (e(ix1), e(iy1), 2.0)
+
+
+def v_det(name):
+    lo, hi = det_box(name)
+    return (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2])
 ADJ_SEED_OFFSET = 1000003
 
 
@@ -86,21 +110,20 @@ def layer_mesh(y0, eps=EPS):
     return m
 
 
-def det_mesh():
+def det_mesh(name):
     m = openmc.RegularMesh()
-    m.lower_left = (-DET_HALF, -DET_HALF, -2.0)
-    m.upper_right = (DET_HALF, DET_HALF, 2.0)
+    m.lower_left, m.upper_right = det_box(name)
     m.dimension = (1, 1, 1)
     return m
 
 
-def add_tallies(model, static):
+def add_tallies(model, static, det):
     """Detector and layer-moment tallies (static phase bin if static)."""
     energy = openmc.EnergyFilter([0.0, 1.0, 2.0])
     phase = [openmc.NoisePhaseFilter()] if static else []
     cp = [openmc.ComplexPartFilter()]
     t = openmc.Tally(name="det")
-    t.filters = [openmc.MeshFilter(det_mesh()), energy] + phase + cp
+    t.filters = [openmc.MeshFilter(det_mesh(det)), energy] + phase + cp
     t.scores = ["flux"]
     tallies = list(model.tallies) + [t]
     for name, y0, _, _ in cortex.vibration_layers(EPS):
@@ -118,18 +141,17 @@ def forward(lib, n, args, cancellation):
                      nskip=args.nskip, static_inactive=args.static_inactive,
                      cancellation=cancellation,
                      vibration={"eps": EPS, "harmonic": n})
-    return add_tallies(m, static=True)
+    return add_tallies(m, static=True, det=args.det)
 
 
 def adjoint(lib_adj, n, args):
     m = cortex.model(lib_adj, args.particles_adj, args.batches_adj,
                      frequency=n * F0, library_only_noise=True)
     m.settings.source = [openmc.IndependentSource(
-        space=openmc.stats.Box((-DET_HALF, -DET_HALF, -2.0),
-                               (DET_HALF, DET_HALF, 2.0)),
+        space=openmc.stats.Box(*det_box(args.det)),
         angle=openmc.stats.Isotropic(),
         energy=openmc.stats.Discrete([0.5], [1.0]))]   # thermal group
-    return add_tallies(m, static=False)
+    return add_tallies(m, static=False, det=args.det)
 
 
 TALLY_NAMES = ("flux", "det", "pt_top", "pt_bottom")
@@ -198,7 +220,7 @@ def run_adjoint(args):
                            base_seed=args.base_seed + ADJ_SEED_OFFSET)
         v = out["values"]
         R = args.reps
-        path = HERE / f"stage8c_adjoint_n{n}{args.sfx}.npz"
+        path = HERE / f"stage8c_adjoint_n{n}_{args.det}{args.sfx}.npz"
         np.savez(path, flux=v["flux"].reshape(R, 138, 138, 2),
                  pt_top=v["pt_top"].reshape(R, NL, 2, 4),
                  pt_bottom=v["pt_bottom"].reshape(R, NL, 2, 4),
@@ -307,7 +329,7 @@ def normalised_openmc(path):
     return np.stack([A[..., 1], A[..., 0]], axis=1), a, norm
 
 
-def contraction(a, adj, n, norm):
+def contraction(a, adj, n, det):
     """<chi, dS> per replica over both layers (P0 + P1 + fission)."""
     fuel, water = cortex_fuel(), cortex_water()
     mats = {"fuel": fuel, "water": water}
@@ -330,7 +352,7 @@ def contraction(a, adj, n, norm):
         dP = c[:, None, None] * ((chi_omega(L, w) - chi_omega(Rm, w))
                                  / cortex.KEFF)[None]
         F = a[f"pt_{name}"][:, :, ::-1, :, 0].real       # library order
-        A = V_DET * adj[f"pt_{name}"][:, :, ::-1, :]
+        A = v_det(det) * adj[f"pt_{name}"][:, :, ::-1, :]
         for r in range(F.shape[0]):
             p0, p1 = pt_terms_complex(F[r], A[r], wts, dSt, dN0,
                                       np.zeros_like(dN0))
@@ -391,14 +413,14 @@ def analyze(args):
                     f"Re={info['z_int'][0]:+.2f} Im={info['z_int'][1]:+.2f};"
                     f" Hotelling p={info['hotelling'][2]:.3f}")
                 gate.append((f"8c n={n} {name} cancellation meshes", ok))
-        pa = HERE / f"stage8c_adjoint_n{n}{args.adjoint_sfx}.npz"
+        pa = HERE / f"stage8c_adjoint_n{n}_{args.det}{args.adjoint_sfx}.npz"
         if pa.exists():
             adj = np.load(pa)
             for canc in args.cancellation:
                 a = np.load(HERE / f"stage8c_openmc_n{n}_c{canc}"
                             f"{args.sfx}.npz")
                 dd = a["det"][:, 0, 1]               # thermal (E bin 0), noise
-                P = contraction(a, adj, n, None)
+                P = contraction(a, adj, n, args.det)
                 cv = P.sum(axis=1)
                 ok, info = paired_correlated(dd[:, None], cv[:, None])
                 log(f"  c={canc} detector vs contraction: "
@@ -409,6 +431,24 @@ def analyze(args):
                     f"{fmt_c(P[:, 1].mean())}, fission "
                     f"{fmt_c(P[:, 2].mean())})")
                 gate.append((f"8c n={n} c={canc} second estimator", ok))
+                # all three estimates of the detector, normalised by the
+                # static thermal flux at the assembly centre
+                (ix0, ix1), (iy0, iy1) = det_bins(args.det)
+                A_n, _, norm = normalised_openmc(
+                    HERE / f"stage8c_openmc_n{n}_c{canc}{args.sfx}.npz")
+                rows = [("forward det tally", dd / norm),
+                        ("forward map sum", A_n[:, 1, iy0:iy1,
+                                                ix0:ix1].sum(axis=(1, 2))),
+                        ("contraction", cv / norm)]
+                if pb.exists():
+                    rows.append(("Abeille map sum", B[:, 1, iy0:iy1,
+                                                      ix0:ix1].sum(
+                                                          axis=(1, 2))))
+                for lab, v in rows:
+                    s = np.hypot(v.real.std(ddof=1), v.imag.std(ddof=1)) \
+                        / np.sqrt(v.size)
+                    log(f"    {args.det} detector (thermal), {lab}: "
+                        f"{fmt_c(v.mean())} +- {s:.2e}")
     n_fail = sum(not ok for _, ok in gate)
     log(f"\nStage 8c: {len(gate) - n_fail}/{len(gate)} gate checks passed")
     for name, ok in gate:
@@ -430,6 +470,8 @@ def main():
     p.add_argument("--nskip", type=int, default=20)
     p.add_argument("--static-inactive", type=int, default=200)
     p.add_argument("--cancellation", default="170,340")
+    p.add_argument("--det", choices=sorted(DETECTORS), default="pin",
+                   help="detector for the second estimator")
     p.add_argument("--particles-adj", type=int, default=20000)
     p.add_argument("--batches-adj", type=int, default=100)
     p.add_argument("--abeille-batches", type=int, default=600)

@@ -45,6 +45,14 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
   Abeille at 28 % per cell resolves only gross errors, so the slab (8a, 8b,
   exact S_N) carries the verification weight. The 8c compute plan is open.
 - **Abeille n = 2 failed** after 8 h (exit 1); its replica logs are needed.
+- **Open discrepancy at the pin (probe level).**
+  - Thermal n = 1 at r < 0.6 cm: Abeille 0.074 ± 0.006 against OpenMC
+    0.025 ± 0.015 (t ≈ 3). Beyond 1.5 cm both are at noise level.
+  - Cancellation only touches fission sites (all born fast), so it cannot
+    mix directions.
+  - Diagnostic: a pin-cell detector aligned to the map bins, estimated
+    three ways: the OpenMC forward map at cancellation 170 and 340, the
+    adjoint contraction (no cancellation anywhere), and Abeille's map.
 
 ## Open items and known limitations
 
