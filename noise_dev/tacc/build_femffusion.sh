@@ -15,7 +15,8 @@
 #   FEMFFUSION_DIR       clone and build here (default: <parent of
 #                        $OPENMC_DEV_SRC>/FEMFFUSION, else $SCRATCH/FEMFFUSION)
 #   FEMFFUSION_PREREQ    modules to load before deal.II (compiler, MPI), as
-#                        listed by `module spider <deal.II module>`
+#                        listed by `module spider <deal.II module>`; for
+#                        dealii/9.4.0-real on LS6: "intel/19.1.1 impi/19.0.9"
 #   FEMFFUSION_DEALII    deal.II module (default dealii/9.4.0-real)
 #
 # The same modules must be loaded to run femffusion.exe; the script writes
@@ -28,6 +29,13 @@ if [ -n "${OPENMC_DEV_SRC:-}" ]; then
   DEST=${FEMFFUSION_DIR:-$(dirname "$OPENMC_DEV_SRC")/FEMFFUSION}
 else
   DEST=${FEMFFUSION_DIR:-$SCRATCH/FEMFFUSION}
+fi
+
+# `module` is a shell function; make sure it exists in this non-interactive
+# shell (Lmod exports LMOD_PKG)
+if ! type module > /dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "${LMOD_PKG:-/opt/apps/lmod/lmod}/init/bash"
 fi
 
 module reset > /dev/null 2>&1 || true

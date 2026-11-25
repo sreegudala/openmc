@@ -75,8 +75,8 @@ module (real scalars; TACC's PETSc modules include SLEPc). Find the
 prerequisites of the deal.II module, then build on a login node:
 
 ```bash
-module spider dealii/9.4.0-real          # note the "You will need" line
-FEMFFUSION_PREREQ="<that line>" bash tacc/build_femffusion.sh
+module spider dealii/9.4.0-real          # "You will need": intel/19.1.1 impi/19.0.9
+FEMFFUSION_PREREQ="intel/19.1.1 impi/19.0.9" bash tacc/build_femffusion.sh
 ```
 
 The script pins commit 1611f90 (the one in the design doc), runs
