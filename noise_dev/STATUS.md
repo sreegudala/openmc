@@ -52,8 +52,11 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
   - The sampled noise source refuses more than one MPI process (fatal
     error).
   - Runs use threads plus concurrent replicas instead.
-- **FEMFFUSION** is not built (needs deal.II, PETSc and SLEPc). Its
-  cross-checks in 4b, 6c and 9a are informational; 9a's gate depends on it.
+- **FEMFFUSION**: built locally (`~/dev/external/FEMFFUSION`, commit
+  1611f90, Ubuntu deal.II 9.5.1 / PETSc 3.19; its 99 built-in tests pass,
+  including the noise and vibration ones). The TACC build script is
+  `tacc/build_femffusion.sh` (deal.II module). Its cross-checks in 4b, 6c
+  and 9a are informational; 9a's gate depends on it.
 - **Stage 8 geometry: resolved.** The paper's x-vibrating pin at
   (−2.52, −2.52) and Abeille's y-vibrating pin at (+2.52, −2.52) are related
   by a 90° rotation of a fully symmetric assembly, so the fields are
@@ -83,6 +86,9 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-25: FEMFFUSION built locally (Ubuntu packages; 99/99 built-in
+  tests pass). OpenMC is unaffected (a fresh configure still finds serial
+  HDF5). TACC build script added.
 - 2026-11-25: **Stage 8 gate passed.**
   - 8c gate runs (job 3612744, 960 batches): forward against contraction
     passes on all 6 detector/mesh pairs; the meshes are consistent; n = 2

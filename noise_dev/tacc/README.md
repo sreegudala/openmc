@@ -67,6 +67,25 @@ cancellation) and stops each cleanly after `--max-minutes` (default 1260).
 The Abeille static flux used for normalisation is committed
 (`stage6c_abeille_static.npz`); `analyze` runs locally.
 
+## FEMFFUSION (deterministic cross-checks)
+
+FEMFFUSION (GPL-3.0) is built outside the repo, in `$FEMFFUSION_DIR`
+(default `<parent of $OPENMC_DEV_SRC>/FEMFFUSION`), against TACC's deal.II
+module (real scalars; TACC's PETSc modules include SLEPc). Find the
+prerequisites of the deal.II module, then build on a login node:
+
+```bash
+module spider dealii/9.4.0-real          # note the "You will need" line
+FEMFFUSION_PREREQ="<that line>" bash tacc/build_femffusion.sh
+```
+
+The script pins commit 1611f90 (the one in the design doc), runs
+FEMFFUSION's test suite, and writes the run-time modules to
+`$FEMFFUSION_DIR/modules.sh`. If 9.4.0 does not compile, try
+`FEMFFUSION_DEALII=dealii/9.7.1-real`. Locally FEMFFUSION is built against
+the Ubuntu 24.04 packages (`libdeal.ii-dev petsc-dev slepc-dev`), the
+versions it is tested with.
+
 ## Bringing results back
 
 From the local machine (adjust the host), copy logs and summaries but not the
