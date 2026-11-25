@@ -445,33 +445,33 @@ def analyze(args):
                     f"Re={info['z_int'][0]:+.2f} Im={info['z_int'][1]:+.2f};"
                     f" Hotelling p={info['hotelling'][2]:.3f}")
                 gate.append((f"8c n={n} {name} cancellation meshes", ok))
-        pa = HERE / f"stage8c_adjoint_n{n}_{args.det}{args.adjoint_sfx}.npz"
-        if pa.exists():
+        dets = args.dets.get(n, [args.det])
+        for det in dets:
+            pa = HERE / f"stage8c_adjoint_n{n}_{det}{args.adjoint_sfx}.npz"
+            if not pa.exists():
+                log(f"  (no adjoint result {pa.name})")
+                continue
             adj = np.load(pa)
+            (ix0, ix1), (iy0, iy1) = det_bins(det)
             for canc in args.cancellation:
-                a = np.load(HERE / f"stage8c_openmc_n{n}_c{canc}"
-                            f"{args.sfx}.npz")
-                dd = a["det"][:, 0, 1]               # thermal (E bin 0), noise
-                P = contraction(a, adj, n, args.det)
+                path = HERE / f"stage8c_openmc_n{n}_c{canc}{args.sfx}.npz"
+                a = np.load(path)
+                A_n, _, norm = normalised_openmc(path)
+                # forward: the map summed over the detector bins (equal to
+                # the detector tally for the detector the run carried)
+                dd = A_n[:, 1, iy0:iy1, ix0:ix1].sum(axis=(1, 2))
+                P = contraction(a, adj, n, det) / norm[:, None]
                 cv = P.sum(axis=1)
                 ok, info = paired_correlated(dd[:, None], cv[:, None])
-                log(f"  c={canc} detector vs contraction: "
+                log(f"  {det} c={canc} forward vs contraction: "
                     f"{'PASS' if ok else 'FAIL'} paired t "
                     f"Re={info['t'][0]:+.2f} Im={info['t'][1]:+.2f}; "
-                    f"forward {fmt_c(dd.mean())} contraction "
-                    f"{fmt_c(cv.mean())} (P0 {fmt_c(P[:, 0].mean())}, P1 "
+                    f"P0 {fmt_c(P[:, 0].mean())}, P1 "
                     f"{fmt_c(P[:, 1].mean())}, fission "
-                    f"{fmt_c(P[:, 2].mean())})")
-                gate.append((f"8c n={n} c={canc} second estimator", ok))
-                # all three estimates of the detector, normalised by the
-                # static thermal flux at the assembly centre
-                (ix0, ix1), (iy0, iy1) = det_bins(args.det)
-                A_n, _, norm = normalised_openmc(
-                    HERE / f"stage8c_openmc_n{n}_c{canc}{args.sfx}.npz")
-                rows = [("forward det tally", dd / norm),
-                        ("forward map sum", A_n[:, 1, iy0:iy1,
-                                                ix0:ix1].sum(axis=(1, 2))),
-                        ("contraction", cv / norm)]
+                    f"{fmt_c(P[:, 2].mean())}")
+                gate.append((f"8c n={n} {det} c={canc} second estimator",
+                             ok))
+                rows = [("forward map sum", dd), ("contraction", cv)]
                 if pb.exists():
                     rows.append(("Abeille map sum", B[:, 1, iy0:iy1,
                                                       ix0:ix1].sum(
@@ -479,7 +479,7 @@ def analyze(args):
                 for lab, v in rows:
                     s = np.hypot(v.real.std(ddof=1), v.imag.std(ddof=1)) \
                         / np.sqrt(v.size)
-                    log(f"    {args.det} detector (thermal), {lab}: "
+                    log(f"    {det} (thermal, normalised), {lab}: "
                         f"{fmt_c(v.mean())} +- {s:.2e}")
     n_fail = sum(not ok for _, ok in gate)
     log(f"\nStage 8c: {len(gate) - n_fail}/{len(gate)} gate checks passed")
@@ -504,6 +504,9 @@ def main():
     p.add_argument("--cancellation", default="170,340")
     p.add_argument("--det", choices=sorted(DETECTORS), default="pin",
                    help="detector for the second estimator")
+    p.add_argument("--dets", default="1:pin_top+pin_bottom,2:pin",
+                   help="analyze: detectors per harmonic for the second "
+                   "estimator, e.g. 1:pin_top+pin_bottom,2:pin")
     p.add_argument("--particles-adj", type=int, default=20000)
     p.add_argument("--batches-adj", type=int, default=100)
     p.add_argument("--abeille-batches", type=int, default=600)
@@ -524,6 +527,8 @@ def main():
     args.abeille_sfx = sfx(args.abeille_tag)
     args.harm = [int(x) for x in args.harmonics.split(",")]
     args.cancellation = [int(x) for x in args.cancellation.split(",")]
+    args.dets = {int(k): v.split("+") for k, v in
+                 (kv.split(":") for kv in args.dets.split(","))}
     n_fail = 0
     if args.mode == "openmc":
         run_openmc(args)
