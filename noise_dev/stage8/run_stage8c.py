@@ -240,7 +240,8 @@ def run_adjoint(args):
 
 
 # ---------------------------------------------------------------- Abeille
-def abeille_input(n, nbatches, nignored, seed, max_minutes, particles):
+def abeille_input(n, nbatches, nignored, seed, max_minutes, particles,
+                  cancellation=True):
     text = (s6c.abeille_dir() / "input_files" /
             "noise_vibration.yaml").read_text()
     geometry = text[:text.index("tally-filters:")]
@@ -253,7 +254,7 @@ def abeille_input(n, nbatches, nignored, seed, max_minutes, particles):
   nbatches: {nbatches}
   nignored: {nignored}
   nskip: 3
-  noise-cancellation: true
+  noise-cancellation: {'true' if cancellation else 'false'}
   inner-generations: true
   normalize-noise-source: true
   noise-angular-frequency: {w:.8f}
@@ -300,7 +301,8 @@ def run_abeille(args):
             seed = 19073486328125 + 2 * 7919 * (r + args.base_seed)
             (d / "input.yaml").write_text(abeille_input(
                 n, args.abeille_batches, args.abeille_ignored, seed,
-                args.max_minutes, args.abeille_particles))
+                args.max_minutes, args.abeille_particles,
+                not args.abeille_no_cancellation))
             dirs.append(d)
 
         def one(d):
@@ -508,6 +510,9 @@ def main():
     p.add_argument("--abeille-ignored", type=int, default=100)
     p.add_argument("--abeille-particles", type=int, default=100000)
     p.add_argument("--max-minutes", type=float, default=1260.0)
+    p.add_argument("--abeille-no-cancellation", action="store_true",
+                   help="Abeille with noise-cancellation false (the shipped "
+                   "noise_vibration.yaml setting)")
     p.add_argument("--adjoint-tag", default=None,
                    help="analyze: tag of the adjoint results (default --tag)")
     p.add_argument("--abeille-tag", default=None,

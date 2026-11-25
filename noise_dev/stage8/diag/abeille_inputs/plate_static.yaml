@@ -1,0 +1,83 @@
+materials:
+  - id: 1
+    name: Mix
+    total: [0.2958213633, 0.9932639172]
+    scatter: [[0.2676774002, 0.01893891115], [0, 0.9206279421]]
+    absorption: [0.009205051978, 0.07263597506]
+    fission: [0.001943239384, 0.03579110599]
+    nu_prompt: [2.576819862, 2.576819862]
+    nu_delayed: [0.013860138, 0.013860138]
+    chi: [[1., 0.]]
+    delayed_groups:
+      probabilities: [1.]
+      constants: [0.0851]
+      chi: [[1., 0.]]
+    group-speeds: [1.82304E7, 4.13067E5]
+  - id: 2
+    name: Water
+    total: [0.25411, 1.2182]
+    absorption: [0.00079457, 0.029316]
+    fission: [0., 0.]
+    nu: [0., 0.]
+    chi: [[1., 0.]]
+    scatter: [[0.22519143, 0.028124], [0, 1.188884]]
+    group-speeds: [1.82304E7, 4.13067E5]
+
+surfaces:
+  - {id: 1, type: xplane, x0: -50., boundary: vacuum}
+  - {id: 2, type: xplane, x0: 10.}
+  - {id: 3, type: xplane, x0: 14.}
+  - {id: 9, type: xplane, x0: 11.6343}
+  - {id: 10, type: xplane, x0: 12.3657}
+  - {id: 4, type: xplane, x0: 50., boundary: vacuum}
+  - {id: 5, type: yplane, y0: -5., boundary: reflective}
+  - {id: 6, type: yplane, y0: 5., boundary: reflective}
+  - {id: 7, type: zplane, z0: -5., boundary: reflective}
+  - {id: 8, type: zplane, z0: 5., boundary: reflective}
+
+cells:
+  - {id: 1, region: "+1 & -2 & +5 & -6 & +7 & -8", material: 1}
+  - {id: 2, region: "+2 & -9 & +5 & -6 & +7 & -8", material: 2}
+  - {id: 4, region: "+9 & -10 & +5 & -6 & +7 & -8", material: 1}
+  - {id: 5, region: "+10 & -3 & +5 & -6 & +7 & -8", material: 2}
+  - {id: 3, region: "+3 & -4 & +5 & -6 & +7 & -8", material: 1}
+
+universes:
+  - {id: 1, cells: [1, 2, 3, 4, 5]}
+
+root-universe: 1
+
+tally-filters:
+  position-filters:
+    - id: 1
+      type: regular-cartesian-mesh
+      low: [-50., -5., -5.]
+      high: [50., 5., 5.]
+      shape: [800, 1, 1]
+  energy-filters:
+    - id: 1
+      energy-bounds: [0., 1., 2.]
+
+tallies:
+  - name: flux
+    quantity: flux
+    estimator: track-length
+    position-filter: 1
+    energy-filter: 1
+
+settings:
+  ngroups: 2
+  energy-mode: multi-group
+  energy-bounds: [0., 1., 2.]
+  seed: 19073486328125
+
+simulation:
+  mode: k-eigenvalue
+  nparticles: 50000
+  ngenerations: 400
+  nignored: 100
+  sources:
+    - spatial: {type: box, low: [-50., -5., -5.], hi: [50., 5., 5.]}
+      direction: {type: isotropic}
+      energy: {type: mono-energetic, energy: 0.5}
+      weight: 1.
