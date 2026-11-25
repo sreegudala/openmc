@@ -19,6 +19,9 @@
 #                        dealii/9.4.0-real on LS6: "intel/19.1.1 impi/19.0.9"
 #   FEMFFUSION_DEALII    deal.II module (default dealii/9.4.0-real)
 #
+# Pinned to commit 1611f90 (design doc) plus one local fix: std::filesystem
+# replaced by POSIX stat/mkdir for a pre-C++17 deal.II build (see below).
+#
 # The same modules must be loaded to run femffusion.exe; the script writes
 # them to $FEMFFUSION_DIR/modules.sh.
 set -eo pipefail
@@ -56,8 +59,35 @@ if [ ! -d "$DEST/.git" ]; then
 fi
 cd "$DEST"
 git fetch -q origin || true
-git checkout -q 1611f90
+git checkout -q -f 1611f90       # -f: start from clean sources (patch below)
 rm -f CMakeCache.txt.tmp*
+
+# Local fix: TACC's deal.II 9.4 (Intel 19.1) compiles in a pre-C++17 mode
+# and puts its -std flag after ours, so <filesystem> has no
+# std::filesystem. FEMFFUSION uses it only to create an output folder;
+# replace those calls with POSIX stat/mkdir. Behaviour is unchanged.
+python3 - <<'PYEOF'
+from pathlib import Path
+helpers = '''#include <sys/stat.h>  // local fix (noise_dev/tacc/build_femffusion.sh)
+static bool femff_dir_exists(const std::string &p)
+{ struct stat s; return stat(p.c_str(), &s) == 0; }
+static void femff_mkdir(const std::string &p) { mkdir(p.c_str(), 0755); }
+'''
+for name in ("static_diffusion.cc", "static_full_spn.cc", "static_spn.cc",
+             "static_sdpn.cc"):
+    f = Path("src") / name
+    s = f.read_text()
+    if "femff_mkdir" in s:
+        continue
+    assert s.count("#include <filesystem>") == 1, name
+    s = s.replace("#include <filesystem>", "#include <string>\n" + helpers)
+    s = s.replace("std::filesystem::exists(folderPath)",
+                  "femff_dir_exists(folderPath)")
+    s = s.replace("std::filesystem::create_directory(folderPath)",
+                  "femff_mkdir(folderPath)")
+    assert "std::filesystem" not in s, name
+    f.write_text(s)
+PYEOF
 
 # Use deal.II's own compiler. FEMFFUSION's CMakeLists calls project()
 # before deal.II's autopilot, so CMake would otherwise pick c++ (g++) and
