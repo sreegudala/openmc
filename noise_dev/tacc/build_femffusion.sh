@@ -59,12 +59,29 @@ git fetch -q origin || true
 git checkout -q 1611f90
 rm -f CMakeCache.txt.tmp*
 
+# Use deal.II's own compiler. FEMFFUSION's CMakeLists calls project()
+# before deal.II's autopilot, so CMake would otherwise pick c++ (g++) and
+# then get deal.II's Intel flags (-w2, -wd..., -qopenmp-simd, -ip).
+DEALII_ROOT=${TACC_DEALII_DIR:-${DEAL_II_DIR:-}}
+CFG=$(find "$DEALII_ROOT" -name deal.IIConfig.cmake 2> /dev/null | head -1)
+if [ -z "$CFG" ]; then
+  echo "deal.IIConfig.cmake not found under '$DEALII_ROOT'"
+  exit 1
+fi
+DEALII_CXX=$(sed -n 's/^[Ss][Ee][Tt](DEAL_II_CXX_COMPILER "\(.*\)")/\1/p' \
+  "$CFG" | head -1)
+echo "deal.II config: $CFG"
+echo "deal.II C++ compiler: $DEALII_CXX"
+
+# Fresh configure: a cache from an earlier attempt keeps its compiler
+rm -rf CMakeCache.txt CMakeFiles
+
 # deal.II's autopilot build, as in the FEMFFUSION README.
 # CMAKE_POLICY_VERSION_MINIMUM: CMake >= 4 rejects FEMFFUSION's
 # cmake_minimum_required(VERSION 2.8.8) (as for Abeille's docopt.cpp)
-DEAL_II_DIR=${TACC_DEALII_DIR:-${DEAL_II_DIR:-}} cmake . \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-  ${TACC_DEALII_DIR:+-DDEAL_II_DIR=$TACC_DEALII_DIR}
+cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DDEAL_II_DIR="$(dirname "$CFG")" \
+  ${DEALII_CXX:+-DCMAKE_CXX_COMPILER="$DEALII_CXX"}
 make release
 make -j "${BUILD_JOBS:-16}"
 
