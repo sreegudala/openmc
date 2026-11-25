@@ -21,6 +21,8 @@
 #
 # Pinned to commit 1611f90 (design doc) plus one local fix: std::filesystem
 # replaced by POSIX stat/mkdir for a pre-C++17 deal.II build (see below).
+# The link line is also adjusted where deal.II names a system library that
+# LS6 lacks (/usr/lib64/libtbb.so; see below). Neither changes behaviour.
 #
 # The same modules must be loaded to run femffusion.exe; the script writes
 # them to $FEMFFUSION_DIR/modules.sh.
@@ -113,6 +115,48 @@ cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DDEAL_II_DIR="$(dirname "$CFG")" \
   ${DEALII_CXX:+-DCMAKE_CXX_COMPILER="$DEALII_CXX"}
 make release
+
+# deal.II's exported link line may name unversioned system libraries that
+# existed on TACC's build host but not on LS6 (e.g. /usr/lib64/libtbb.so;
+# only the runtime libtbb.so.2 is installed). Point each missing one at the
+# file libdeal_II itself loads (ldd), else at a versioned file next to it.
+DEALII_LIBS=$(find "$DEALII_ROOT" -name 'libdeal_II*.so' 2> /dev/null | head -2)
+LDD_OUT=$(for l in $DEALII_LIBS; do ldd "$l" 2> /dev/null; done)
+LDD_OUT="$LDD_OUT" python3 - <<'PYEOF'
+import glob, os, re
+from pathlib import Path
+ldd = {}
+for line in os.environ.get("LDD_OUT", "").splitlines():
+    m = re.match(r"\s*(\S+)\s+=>\s+(/\S+)", line)
+    if m:
+        ldd[m.group(1)] = m.group(2)
+def resolve(path):
+    base = os.path.basename(path)
+    for soname, real in sorted(ldd.items()):
+        if soname.startswith(base + ".") and os.path.exists(real):
+            return real
+    cands = sorted(glob.glob(path + ".*"))
+    return cands[0] if cands else None
+d = Path("CMakeFiles/femffusion.exe.dir")
+pat = re.compile(r"(/[^\s;\"']+\.so)(?=[\s;\"']|$)")
+fixes = {}
+for name in ("link.txt", "build.make"):
+    f = d / name
+    s = f.read_text()
+    for p in set(pat.findall(s)):
+        if os.path.exists(p) or p in fixes:
+            continue
+        r = resolve(p)
+        if r is None:
+            raise SystemExit(f"missing library {p} and no versioned copy found")
+        fixes[p] = r
+    for p, r in fixes.items():
+        s = re.sub(re.escape(p) + r"(?=[\s;\"']|$)", r, s)
+    f.write_text(s)
+for p, r in fixes.items():
+    print(f"link fix: {p} -> {r}")
+PYEOF
+
 make -j "${BUILD_JOBS:-16}"
 
 {
