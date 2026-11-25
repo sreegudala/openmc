@@ -169,4 +169,13 @@ make -j "${BUILD_JOBS:-16}"
 
 echo "FEMFFUSION built: $DEST/femffusion.exe"
 echo "Running its test suite (about a minute) ..."
-OMP_NUM_THREADS=1 ./femffusion.exe -t 2>&1 | tail -4
+# Line-buffered and logged, so a crash does not swallow the output
+set +e
+OMP_NUM_THREADS=1 stdbuf -oL -eL ./femffusion.exe -t > "$DEST/test.log" 2>&1
+rc=$?
+set -e
+tail -4 "$DEST/test.log"
+if [ $rc -ne 0 ]; then
+  echo "femffusion.exe -t exited with status $rc; full log: $DEST/test.log"
+  exit $rc
+fi
