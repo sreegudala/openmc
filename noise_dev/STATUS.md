@@ -24,7 +24,7 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9: 9a (C5G7 against FEMFFUSION, which is not built) and 9b (TRIGA,
+- Stage 9: 9a (C5G7 against FEMFFUSION, built locally; TACC pending) and 9b (TRIGA,
   waiting for the N5 library).
 
 ## Open items and known limitations
