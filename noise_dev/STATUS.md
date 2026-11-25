@@ -17,46 +17,15 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c (weight windows) moved to 9b prep | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 waits for the regenerated library | `prep9b/n3c_gate.md` |
-| 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **In progress**: vibration source implemented (unit tests pass; Stage 6 sampling bit-identical); drivers `stage8/run_stage8.py` (8a, 8b, probe) and `run_stage8c.py` (CORTEX vs Abeille) smoke-tested; σ probe and Abeille references go to TACC | |
+| 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
 
-## Next: Stage 8 gate runs (sized from the probe, jobs 3607700–3607705)
+## Next
 
-- **Slab probe** (20 × 20 × 60000, ε = 0.2), both against S_N:
-  - n = 1: detector σ 5.8 %, field 6 % per bin;
-  - n = 2: detector σ 33 %.
-- **Slab sizing:** 8a + 8b run in one job at 100000 particles × 400 batches
-  (33×), aiming at a detector σ of about 1 % for n = 1 and 6 % for n = 2,
-  2 % at ε = 0.05. The adjoint runs for the contraction use 20000 × 400.
-- **8c probe** (OpenMC, 20 × 60 × 20000, cancellation 170): the forward
-  estimate is hopeless at this cost.
-  - Median σ per cell is 63 % on Abeille's thermal cells, and 485 % at the
-    central-hole detector.
-  - Abeille n = 1 (600 batches, 8 h × 20 replicas) has 28 % (thermal) and
-    97 % (fast) per cell.
-  - On the same cells OpenMC's FOM is 14× Abeille's. Coarse-graining does
-    not help: the replica noise is one global mode, while the signal
-    (a translating pin) has almost no global component.
-- **8c adjoint contraction for the same detector:** σ 8 % (n = 1) and 1 %
-  (n = 2), about 700× the forward FOM including the adjoint run's time.
-  n = 2 exceeds n = 1: the faces' n = 1 terms cancel (dipole), their n = 2
-  terms add.
-- **8c power is limited by the reference.** A two-sample test against
-  Abeille at 28 % per cell resolves only gross errors, so the slab (8a, 8b,
-  exact S_N) carries the verification weight. The 8c compute plan is open.
-- **Abeille n = 2:** 19 of 20 replicas finished (about 7.8 h each).
-  Replica 19 died on Abeille's own lost-particle check, a corner
-  reflection at z = 2, y = −10.79 (`surface_tracker.cpp:86`); our input
-  is fine. The driver now collects the replicas that finished
-  (`run_stage8c.py abeille-collect`).
-- **Open discrepancy at the pin (probe level).**
-  - Thermal n = 1 at r < 0.6 cm: Abeille 0.074 ± 0.006 against OpenMC
-    0.025 ± 0.015 (t ≈ 3). Beyond 1.5 cm both are at noise level.
-  - Cancellation only touches fission sites (all born fast), so it cannot
-    mix directions.
-  - Diagnostic: a pin-cell detector aligned to the map bins, estimated
-    three ways: the OpenMC forward map at cancellation 170 and 340, the
-    adjoint contraction (no cancellation anywhere), and Abeille's map.
+- Abeille n = 1 without cancellation (job 3612742, running): append its
+  result to `stage8/stage8_gate.md`.
+- Stage 9: 9a (C5G7 against FEMFFUSION, which is not built) and 9b (TRIGA,
+  waiting for the N5 library).
 
 ## Open items and known limitations
 
@@ -114,6 +83,12 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-25: **Stage 8 gate passed.**
+  - 8c gate runs (job 3612744, 960 batches): forward against contraction
+    passes on all 6 detector/mesh pairs; the meshes are consistent; n = 2
+    passes against Abeille.
+  - n = 1 thermal against Abeille fails at both meshes, dispositioned as
+    the reference (`stage8/diag/`).
 - 2026-11-24: **8c near-pin discrepancy resolved on the OpenMC side**
   (`stage8/diag/README.md`).
   - n = 1 half-pin detectors: the adjoint contraction (no cancellation,
