@@ -59,8 +59,11 @@ git fetch -q origin || true
 git checkout -q 1611f90
 rm -f CMakeCache.txt.tmp*
 
-# deal.II's autopilot build, as in the FEMFFUSION README
+# deal.II's autopilot build, as in the FEMFFUSION README.
+# CMAKE_POLICY_VERSION_MINIMUM: CMake >= 4 rejects FEMFFUSION's
+# cmake_minimum_required(VERSION 2.8.8) (as for Abeille's docopt.cpp)
 DEAL_II_DIR=${TACC_DEALII_DIR:-${DEAL_II_DIR:-}} cmake . \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   ${TACC_DEALII_DIR:+-DDEAL_II_DIR=$TACC_DEALII_DIR}
 make release
 make -j "${BUILD_JOBS:-16}"
