@@ -127,6 +127,46 @@ if "femff_int" not in s:
     s = s.replace(e, "(1u << (n_levels - level - 1))")
     f.write_text(s)
 
+# PETSc callbacks declared void: FEMFFUSION registers ~25 shell-matrix
+# multiplies (eigen, time and noise solvers) as (void (*) ()) casts of
+# functions returning void, but PETSc calls them as PetscErrorCode (*)(Mat,
+# Vec, Vec) and checks the return register. GCC happens to leave 0 there;
+# Intel does not ("Error solving EPS problem" from MatMult_Shell with an
+# empty message). Register a wrapper that calls the function and returns 0.
+# A callback of any other signature fails to compile in the wrapper.
+import re
+wrapper = '''
+// local fix (noise_dev/tacc/build_femffusion.sh): PETSc expects shell
+// callbacks to return PetscErrorCode; FEMFFUSION's return void.
+template <void (*F)(Mat, Vec, Vec)>
+PetscErrorCode femff_cb(Mat m, Vec x, Vec y)
+{ F(m, x, y); return 0; }
+'''
+files = sorted(Path("src").rglob("*.cc")) + sorted(Path("include").rglob("*.h"))
+text = {f: f.read_text() for f in files}
+alltext = "".join(text.values())
+cast = re.compile(r"(\(\s*void\s*\(\s*\*\s*\)\s*\(\s*(?:void)?\s*\)\s*\)\s*)"
+                  r"&?\s*([A-Za-z_]\w*)(\s*<[^<>()]*>)?")
+count = {"cast": 0, "wrapped": 0}
+def repl(m):
+    count["cast"] += 1
+    name, targs = m.group(2), m.group(3) or ""
+    if re.search(r"\bvoid\s+" + name + r"\s*\(", alltext):
+        count["wrapped"] += 1
+        return m.group(1) + "femff_cb<&" + name + targs.strip() + " >"
+    assert re.search(r"\bPetscErrorCode\s+" + name + r"\s*\(", alltext), name
+    return m.group(0)
+for f, s in text.items():
+    if "femff_cb" in s:
+        continue
+    new = cast.sub(repl, s)
+    if new != s:
+        k = list(re.finditer(r"^#include .*$", new, re.M))[-1].end()
+        f.write_text(new[:k] + "\n" + wrapper + new[k:])
+if count["cast"]:
+    print("femff_cb: %(wrapped)d of %(cast)d PETSc callback casts wrapped"
+          % count)
+
 f = Path("src/test.cc")
 s = f.read_text()
 rom =("  test_POD_groupwise();\n  test_LUPOD_extended();\n"

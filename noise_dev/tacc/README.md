@@ -100,7 +100,14 @@ changing results:
 - Intel's fast floating-point model broke `child_pos`/`child_at_face`
   (refined-cell indices for the noise perturbations, computed through
   `log10`/`pow` and truncated): replaced by integer shifts, identical to
-  the original on all 5893 valid inputs where that is exact (GCC).
+  the original on all 5893 valid inputs where that is exact (GCC);
+- 26 PETSc shell-matrix callbacks (eigen, time and noise solvers) are
+  `void` functions cast to PETSc's `PetscErrorCode` callback type; PETSc
+  reads an undefined return value, which is 0 under GCC by accident and
+  not under Intel. They are registered through a wrapper that returns 0.
+
+With all of these, a local build with the LS6 flags forced passes the
+test suite (ROM tests skipped).
 
 `tacc/diag_femffusion.sh` locates a start-up crash (ld.so trace). The
 reference runs for Stage 9a are small and can equally be done locally.
