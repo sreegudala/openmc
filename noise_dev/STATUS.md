@@ -24,7 +24,7 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9: 9a (C5G7 against FEMFFUSION, built locally; TACC pending) and 9b (TRIGA,
+- Stage 9: 9a (C5G7 against FEMFFUSION, built locally and on LS6) and 9b (TRIGA,
   waiting for the N5 library).
 
 ## Open items and known limitations
@@ -57,6 +57,12 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
   including the noise and vibration ones). The TACC build script is
   `tacc/build_femffusion.sh` (deal.II module). Its cross-checks in 4b, 6c
   and 9a are informational; 9a's gate depends on it.
+  - On LS6 (`dealii/9.4.0-real`, Intel 19.1, PETSc/SLEPc 3.16) it
+    passes its test suite after six build-time workarounds, listed in
+    `tacc/README.md`. Two are real FEMFFUSION bugs that GCC hides: 26
+    `void` PETSc callbacks, and integer cell indices computed through
+    `log10`/`pow`. The ROM unit tests are skipped: that deal.II has no
+    LAPACK.
 - **Stage 8 geometry: resolved.** The paper's x-vibrating pin at
   (−2.52, −2.52) and Abeille's y-vibrating pin at (+2.52, −2.52) are related
   by a 90° rotation of a fully symmetric assembly, so the fields are
@@ -86,6 +92,9 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-25: FEMFFUSION built on LS6 (`tacc/build_femffusion.sh`): ALL
+  TEST PASSED (ROM tests skipped). Workarounds in `tacc/README.md`;
+  `tacc/diag_femffusion.sh` diagnoses start-up crashes.
 - 2026-11-25: FEMFFUSION built locally (Ubuntu packages; 99/99 built-in
   tests pass). OpenMC is unaffected (a fresh configure still finds serial
   HDF5). TACC build script added.
