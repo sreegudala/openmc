@@ -124,6 +124,6 @@ pin-resolved C5G7 noise field to about 1 % in amplitude and 0.1° in phase
 against FEMFFUSION SP3. This needed FEMFFUSION's full noise operator: its
 default omits the cross-moment boundary terms at vacuum boundaries.
 
-For later stages, the per-cell rule should allow for the number of cells,
-for example by failing only where the difference exceeds the tolerance at
-3σ. That needs a dated amendment and has not been applied here.
+Amendment 2026-11-26b adopts a 3σ per-cell tolerance rule from Stage 9b
+on. It is not applied to this verdict. Under it, 9a's log shows 14/14 group
+checks passing.

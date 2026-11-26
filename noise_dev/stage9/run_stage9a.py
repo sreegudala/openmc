@@ -276,6 +276,7 @@ def analyze(args):
             f"T={a['times'].sum():.0f}s")
         if abs(float(a["keff"]) - kmean) > 1e-7:
             log("    WARNING: run keff differs from the eigen mean")
+        rule3 = []
         mean, s_re, s_im, _ = summarize(rel.reshape(R, -1))
         mean = mean.reshape(G, N, N)
         s_re = s_re.reshape(G, N, N)
@@ -289,6 +290,15 @@ def analyze(args):
             enough = min(info["amp_eval"], info["ph_eval"]) >= n_cells / 2
             okg = info["ok_amp"] and info["ok_ph"] and enough
             gate.append((f"9a '{label}' group {g + 1}", okg))
+            with np.errstate(divide="ignore", invalid="ignore"):
+                _, info3 = std_criterion(mean[g], s_re[g], s_im[g],
+                                         ref_rel[g], AMP_TOL, PHASE_TOL,
+                                         mask=out & np.isfinite(mean[g]),
+                                         significance=3)
+            rule3.append(f"g{g + 1} "
+                         f"{'pass' if info3['ok_amp'] and info3['ok_ph'] else 'FAIL'}"
+                         f" ({info3['n_amp_fail']} amp, {info3['n_ph_fail']} "
+                         f"phase cells)")
             fin = out & np.isfinite(mean[g])
             A = np.abs(mean[g][fin]) / np.abs(ref_rel[g][fin]) - 1
             P = np.degrees(np.angle(mean[g][fin] / ref_rel[g][fin]))
@@ -300,6 +310,8 @@ def analyze(args):
                 f"{np.percentile(A, 5):+.4f}, {np.percentile(A, 95):+.4f}],"
                 f" dphase median {np.median(P):+.2f} deg; z hist (logged) "
                 f"mean {info['z_mean']:+.2f} std {info['z_std']:.2f}")
+        log("    3-sigma tolerance rule (amendment 2026-11-26b, logged; 9a is "
+            "graded by the rule above): " + ", ".join(rule3))
         # logged: the same check against the shipped default operator
         if f"{SHIPPED}_noise" in F:
             ship = F[f"{SHIPPED}_noise"] / F[f"{SHIPPED}_static"]

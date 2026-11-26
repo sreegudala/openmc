@@ -132,8 +132,16 @@ def summarize(values):
 
 
 def std_criterion(mean, s_re, s_im, ref, amp_tol=0.02, phase_tol_deg=1.0,
-                  mask=None):
-    """Apply STD. Returns (ok, info dict)."""
+                  mask=None, significance=None):
+    """Apply STD. Returns (ok, info dict).
+
+    significance : None (default) or k. None: every evaluated entry must lie
+        within the amplitude and phase tolerances (the rule up to Stage 9a).
+        k (amendment 2026-11-26b, k = 3 from Stage 9b on): an evaluated entry
+        fails only if its difference exceeds the tolerance by more than k of
+        its own standard deviation, i.e. the tolerance is exceeded at k
+        sigma. The evaluation thresholds (sigma < tol / 3) are unchanged.
+    """
     mean = np.atleast_1d(mean)
     ref = np.atleast_1d(ref).astype(complex)
     s_re = np.atleast_1d(s_re)
@@ -160,14 +168,20 @@ def std_criterion(mean, s_re, s_im, ref, amp_tol=0.02, phase_tol_deg=1.0,
     dphi = np.degrees(np.angle(mean / ref))
     amp_eval = mask & (sA / Aref < amp_tol / 3)
     ph_eval = mask & (sphi < phase_tol_deg / 3)
-    ok_amp = bool(np.all(rel_amp[amp_eval] <= amp_tol))
-    ok_ph = bool(np.all(np.abs(dphi[ph_eval]) <= phase_tol_deg))
+    k = 0.0 if significance is None else float(significance)
+    amp_excess = rel_amp - k * sA / Aref - amp_tol
+    ph_excess = np.abs(dphi) - k * sphi - phase_tol_deg
+    ok_amp = bool(np.all(amp_excess[amp_eval] <= 0))
+    ok_ph = bool(np.all(ph_excess[ph_eval] <= 0))
     info = {"n": n, "n_bad": n_bad, "z_mean": z.mean() if n else np.nan,
             "z_std": z.std(ddof=1) if n > 1 else np.nan,
             "max_abs_z": np.abs(z).max() if n else np.nan,
             "amp_eval": int(amp_eval.sum()), "ph_eval": int(ph_eval.sum()),
             "max_rel_amp": rel_amp[amp_eval].max() if amp_eval.any() else np.nan,
             "max_dphi": np.abs(dphi[ph_eval]).max() if ph_eval.any() else np.nan,
+            "n_amp_fail": int(np.sum(amp_excess[amp_eval] > 0)),
+            "n_ph_fail": int(np.sum(ph_excess[ph_eval] > 0)),
+            "significance": significance,
             "ok_z": ok_z, "ok_hist": ok_hist, "ok_amp": ok_amp, "ok_ph": ok_ph,
             "z": z}
     return ok_z and ok_hist and ok_amp and ok_ph, info
@@ -219,7 +233,7 @@ def _z(diff, sigma):
 
 
 def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
-                   p_min=0.0027):
+                   p_min=0.0027, significance=None):
     """STD-C: standard criterion for strongly correlated tallies (mesh bins).
 
     Gated: (i) |z| < 3 for >= 99 % of raw entries and the amplitude/phase
@@ -235,6 +249,8 @@ def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
     vals : (R, N) complex replica values
     ref : (N,) complex reference
     mask : (N,) bool, entries to gate (default all)
+    significance : passed to std_criterion (None: every evaluated entry
+        within tolerance; 3: amendment 2026-11-26b, from Stage 9b on)
 
     Returns
     -------
@@ -249,7 +265,7 @@ def std_correlated(vals, ref, mask=None, amp_tol=0.02, phase_tol_deg=1.0,
     R = vals.shape[0]
     mean, s_re, s_im, _ = summarize(vals)
     _, raw = std_criterion(mean, s_re, s_im, ref, amp_tol, phase_tol_deg,
-                           mask=mask)
+                           mask=mask, significance=significance)
     ok_raw = bool(raw["ok_z"] and raw["ok_amp"] and raw["ok_ph"])
 
     v = vals[:, mask]

@@ -18,6 +18,7 @@ Stage 9a: C5G7 noise, OpenMC against FEMFFUSION ref1_FE2_SP3
     g5: PASS: evaluated amp 1710/2312, phase 2264/2312; max |amp ratio - 1| 0.0432, max |dphase| 0.94 deg; all cells: amp ratio - 1 median -0.0074 [5-95 % -0.0216, +0.0506], dphase median -0.09 deg; z hist (logged) mean -0.07 std 0.99
     g6: PASS: evaluated amp 2100/2312, phase 2303/2312; max |amp ratio - 1| 0.0398, max |dphase| 0.61 deg; all cells: amp ratio - 1 median -0.0078 [5-95 % -0.0173, +0.0100], dphase median -0.09 deg; z hist (logged) mean -0.22 std 0.93
     g7: PASS: evaluated amp 2166/2312, phase 2307/2312; max |amp ratio - 1| 0.0447, max |dphase| 0.47 deg; all cells: amp ratio - 1 median -0.0078 [5-95 % -0.0167, +0.0056], dphase median -0.09 deg; z hist (logged) mean -0.24 std 0.92
+    3-sigma tolerance rule (amendment 2026-11-26b, logged; 9a is graded by the rule above): g1 pass (0 amp, 0 phase cells), g2 pass (0 amp, 0 phase cells), g3 pass (0 amp, 0 phase cells), g4 pass (0 amp, 0 phase cells), g5 pass (0 amp, 0 phase cells), g6 pass (0 amp, 0 phase cells), g7 pass (0 amp, 0 phase cells)
     against ref1_FE2_SP3_nondiag (logged): g1 FAIL (max amp 0.370), g2 FAIL (max amp 0.225), g3 FAIL (max amp 0.140), g4 FAIL (max amp 0.120), g5 FAIL (max amp 0.095), g6 FAIL (max amp 0.301), g7 FAIL (max amp 0.281)
     g1 perturbed pin: OpenMC 0.01245 at  +86.24 deg, FEMFFUSION 0.01152 at  +85.97 deg
     g4 perturbed pin: OpenMC 0.01385 at  +86.63 deg, FEMFFUSION 0.01334 at  +86.53 deg
@@ -42,6 +43,7 @@ Stage 9a: C5G7 noise, OpenMC against FEMFFUSION ref1_FE2_SP3
     g5: PASS: evaluated amp 1707/2312, phase 2262/2312; max |amp ratio - 1| 0.0404, max |dphase| 1.47 deg; all cells: amp ratio - 1 median -0.0093 [5-95 % -0.0239, +0.0450], dphase median +0.05 deg; z hist (logged) mean -0.81 std 0.86
     g6: PASS: evaluated amp 2080/2312, phase 2300/2312; max |amp ratio - 1| 0.0384, max |dphase| 0.65 deg; all cells: amp ratio - 1 median -0.0096 [5-95 % -0.0189, +0.0078], dphase median +0.05 deg; z hist (logged) mean -1.03 std 0.67
     g7: PASS: evaluated amp 2134/2312, phase 2306/2312; max |amp ratio - 1| 0.0348, max |dphase| 0.46 deg; all cells: amp ratio - 1 median -0.0097 [5-95 % -0.0174, +0.0035], dphase median +0.05 deg; z hist (logged) mean -1.06 std 0.63
+    3-sigma tolerance rule (amendment 2026-11-26b, logged; 9a is graded by the rule above): g1 pass (0 amp, 0 phase cells), g2 pass (0 amp, 0 phase cells), g3 pass (0 amp, 0 phase cells), g4 pass (0 amp, 0 phase cells), g5 pass (0 amp, 0 phase cells), g6 pass (0 amp, 0 phase cells), g7 pass (0 amp, 0 phase cells)
     against ref1_FE2_SP3_nondiag (logged): g1 FAIL (max amp 0.358), g2 FAIL (max amp 0.252), g3 FAIL (max amp 0.186), g4 FAIL (max amp 0.094), g5 FAIL (max amp 0.060), g6 FAIL (max amp 0.292), g7 FAIL (max amp 0.267)
     g1 perturbed pin: OpenMC 0.01245 at  +86.35 deg, FEMFFUSION 0.01152 at  +85.97 deg
     g4 perturbed pin: OpenMC 0.01389 at  +86.73 deg, FEMFFUSION 0.01334 at  +86.53 deg

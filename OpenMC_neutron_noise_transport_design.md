@@ -926,6 +926,12 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
     - **Change.** The 9a reference is FEMFFUSION `ref1_FE2` SP3 run with `full_allocated`, which is the same code and the same equations with the boundary terms present. The ref0_FE1, SP1 and SP5 spreads are rerun the same way.
     - **Unchanged.** The gate, the tolerances and the OpenMC runs.
     - **Kept in the record.** The comparison against the shipped default operator stays in the log.
+  - *Amendment (2026-11-26b, Stage 9b and later): per-entry tolerances at 3σ.*
+    - **Problem.** STD's amplitude and phase limits require every evaluated entry to lie within the tolerance. An entry is evaluated when its own σ is below tol/3. With the about 2000 cells per group of 9a, the entries near that threshold make chance failures likely: a cell with σ = 1.5 % and a true difference of −1 % exceeds 5 % at 2.7σ. Of 9a's 14 group checks, 3 failed this way, on single reflector cells at 3.6–3.8σ. The count beyond 3σ matched Gaussian statistics, and the cells' neighbours and the independent run agreed.
+    - **Rule.** From Stage 9b on, wherever a gate applies STD's per-entry amplitude or phase tolerance, an entry fails only if its difference exceeds the tolerance by more than 3σ of that difference: $|A/A_\text{ref}-1|-3\sigma_A/A_\text{ref}>\text{tol}_A$, or $|\Delta\varphi|-3\sigma_\varphi>\text{tol}_\varphi$. This is `harness.std_criterion(..., significance=3)`.
+      - The evaluation thresholds (σ < tol/3), the z tests, STD-C's integral and Hotelling tests, and every other criterion are unchanged.
+    - **Cost.** In the least precise evaluated entries, the limit rises from the tolerance to at most twice the tolerance (tol + 3 · tol/3). Where σ ≪ tol it is essentially the tolerance.
+    - **Not retroactive.** Stages already gated keep their verdicts. 9a stays at 12/15 with disposition; its log also shows the 3σ rule (all 14 group checks pass).
 
 **Log and plot.** Bode plots of $\delta d/d_0$ per detector, forward and adjoint; $G(\omega)$ maps; cost per frequency; memory high-water mark.
 
