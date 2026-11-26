@@ -18,14 +18,16 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 waits for the regenerated library | `prep9b/n3c_gate.md` |
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
-| 9 | Many-group benchmark (C5G7) and TRIGA dry run | Not started (blocked, see below) | |
+| 9 | Many-group benchmark (C5G7) and TRIGA dry run | 9a: model, driver and FEMFFUSION reference ready; LS6 runs pending. 9b: waiting for the N5 library | `stage9/` |
 
 ## Next
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9: 9a (C5G7 against FEMFFUSION, built locally and on LS6) and 9b (TRIGA,
-  waiting for the N5 library).
+- Stage 9a (amendment 2026-11-25): OpenMC eigenvalue (k to ≤ 3 pcm) then
+  noise runs at cancellation 51 and 102 on LS6; FEMFFUSION reference run
+  locally (`stage9/stage9a_femffusion.npz`).
+- Stage 9b (TRIGA): waiting for the N5 library.
 
 ## Open items and known limitations
 
@@ -89,9 +91,18 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 2026-11-20b | 7 | 7e dropped (negative frequencies are rejected and not needed under the bilinear convention); 7c uses P0 + P1 for both perturbations (S_N: P0 alone is 25 % off for a scattering change) and a paired test; penetration statistics deferred to 9b |
 | 2026-11-22 | 9b prep | Stage 9b preparation (N3c weight windows, N5) runs before Stage 8. Noise-mode windows: absolute (source weight scale), modulus comparisons, phase-preserving split, fission sites checked at birth, windows replace the noise roulette inside their mesh; tests N3c-u/a/b |
 | 2026-11-22b | 8 | Pin orientation resolved by symmetry (Abeille's used); gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, from tallies) as a second estimator; statistics sized from a measured forward σ |
+| 2026-11-23 | 8 | Vibration coefficient c_n derived; sampling rule (each side's own kernel and fission data, normalised by the collision material's Σt); `vibration` input |
+| 2026-11-25 | 9a | Reference: FEMFFUSION `ref1_FE2` SP3 of examples/2D_C5G7_NN as shipped (UO2 kinetics on the perturbed MOX mix reproduced); relative noise per pin cell and group; outside the perturbed assembly, amplitude 5 % and phase 2° where OpenMC is precise enough, ≥ half the cells evaluated, both cancellation meshes (51, 102); OpenMC k from a separate eigenvalue run, σ_k ≤ 3 pcm |
 
 ## Log
 
+- 2026-11-25: Stage 9a set up (amendment 2026-11-25). `stage9/c5g7.py`
+  reads FEMFFUSION's C5G7 noise example in place; OpenMC k = 1.18674 ±
+  0.00024 (C5G7 transport reference 1.18655). FEMFFUSION reference run
+  locally: ref1_FE2 SP3 k 1.18271; relative noise outside the perturbed
+  assembly within 1.8 %/0.06° of ref0_FE1, 2.5 % of SP1, 0.5 % of SP5.
+  A 30-batch OpenMC probe is within about 5 % and 3° of FEMFFUSION,
+  before k is pinned down (at 1 Hz 1 pcm of k is about 0.1° and 0.2 %).
 - 2026-11-25: FEMFFUSION built on LS6 (`tacc/build_femffusion.sh`): ALL
   TEST PASSED (ROM tests skipped). Workarounds in `tacc/README.md`;
   `tacc/diag_femffusion.sh` diagnoses start-up crashes.

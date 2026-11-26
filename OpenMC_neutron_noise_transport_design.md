@@ -906,6 +906,18 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
 - 9a: phase within 2° and amplitude within 5 % of FEMFFUSION SP3 away from the perturbed assembly; differences near the source recorded.
 - 9b: forward–adjoint reciprocity within statistics, using a source region and spectrum for which the adjoint tally is exact, as in 7c. $\sum|w|$ bounded. Results independent of cancellation mesh at two sizes. On the plateau $\delta d/d_0$ within about 10 % of $G_0\,\delta\rho$ for a central absorber, as a sanity check and not a gate.
 
+  - *Amendment (2026-11-25, Stage 9a): reference configuration and operational gate.*
+    - **Reference.** FEMFFUSION commit `1611f90` (the LS6 build patches change no results), example `examples/2D_C5G7_NN/NN1.2` as shipped. The gate uses its finer configuration `c5g7_ref1_FE2_DSP3` (mesh `mesh_ref1`, one radial refinement, FE degree 2, SP3). Logged only: the coarser `ref0_FE1` (discretisation error) and SP1 and SP5 on `ref1_FE2` (sensitivity to the transport approximation).
+    - **Problem.** As defined by the example's own files, which `stage9/c5g7.py` reads in place, so both codes use the same numbers.
+      - C5G7 7-group data, 8 delayed families.
+      - $\delta\Sigma_t=\delta\Sigma_a=-0.05i\,\Sigma_a$ (5 % capture: fission and scattering are unchanged) in one MOX 7.0 % pin, at 1 Hz. The pin is at lattice row 15, column 18 from the reflective corner, in the MOX assembly next to the corner UO2 assembly.
+      - Quirk, reproduced: the perturbed mix has MOX 7.0 % cross sections but UO2 kinetics (`.prec` material 9).
+      - Prompt spectrum $\chi_p=(\chi-\sum_k\beta_k\chi_{d,k})/(1-\beta)$, as in FEMFFUSION, so the static spectrum is $\chi$.
+      - The NOISE-SN description gives the pin only in a figure. No NOISE-SN numbers are compared.
+    - **Criticality.** Each code divides fission by its own $k$ (FEMFFUSION: its SP3 eigenvalue). At 1 Hz the global response has a denominator of order $\beta$ (about 500 pcm). An error $\delta\rho$ in $k$ therefore shifts the phase by about $\delta\rho/500$ pcm rad (0.1° per pcm) and the amplitude by about 0.2 % per pcm. OpenMC's $k$ comes from a separate eigenvalue run (20 replicas), and $\sigma_k\le3$ pcm is gated.
+    - **Compared quantity.** The relative noise $\delta\phi_g/\phi_{0,g}$ per pin cell (51 × 51 mesh) and group, which is independent of either code's normalisation.
+    - **Gate.** Outside the perturbed assembly, on every cell and group where OpenMC's replica mean has amplitude σ < 5/3 % and phase σ < 2/3° (as in `std_criterion`): amplitude within 5 % and phase within 2° of the reference. At least half of those cells must be evaluated in every group. This applies to both cancellation meshes: 51 × 51 (aligned with the pin cells, as the Stage 9 Change asks) and 102 × 102. Logged only: the perturbed assembly, core sums per group, the static shape, the two meshes against each other, and the FEMFFUSION spreads.
+
 **Log and plot.** Bode plots of $\delta d/d_0$ per detector, forward and adjoint; $G(\omega)$ maps; cost per frequency; memory high-water mark.
 
 **Changes from the suggested order.**
