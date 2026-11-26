@@ -96,7 +96,11 @@ changing results:
 - it is built without LAPACK: FEMFFUSION is compiled with
   `DEAL_II_WITH_LAPACK` so its own eigenvalue calls reach MKL, and the
   three ROM unit tests, which need LAPACK inside `libdeal_II`, are skipped.
-  The ROM features do not work on LS6; nothing in noise_dev uses them.
+  The ROM features do not work on LS6; nothing in noise_dev uses them;
+- Intel's fast floating-point model broke `child_pos`/`child_at_face`
+  (refined-cell indices for the noise perturbations, computed through
+  `log10`/`pow` and truncated): replaced by integer shifts, identical to
+  the original on all 5893 valid inputs where that is exact (GCC).
 
 `tacc/diag_femffusion.sh` locates a start-up crash (ld.so trace). The
 reference runs for Stage 9a are small and can equally be done locally.

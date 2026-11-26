@@ -99,9 +99,37 @@ for name in ("static_diffusion.cc", "static_full_spn.cc", "static_spn.cc",
 # (LAPACKFullMatrix::compute_svd, invert); a deal.II built without LAPACK
 # runs them as silent no-ops. Guard them (no-op unless
 # FEMFF_SKIP_ROM_TESTS is defined; see below).
+# child_pos/child_at_face (used by the noise perturbations,
+# complex_perturbation.cc) do integer index arithmetic in floating point
+# and truncate: n_levels = log10(n)/log10(2^dim) gives 2.999... under Intel's
+# fast floating-point model, which failed FEMFFUSION's unit test
+# ("Failed Test 5"). Use exact integer shifts (same results where the
+# floating-point version is exact).
+f = Path("src/utils.cc")
+s = f.read_text()
+if "femff_int" not in s:
+    old_lev = ("const unsigned int n_levels = log10(n_children) / "
+               "log10(exp2(dim));")
+    old_max = "const unsigned int max_index_per_dim = exp2(n_levels) - 1;"
+    assert s.count(old_lev) == 1 and s.count(old_max) == 1
+    s = s.replace(old_lev,
+        "unsigned int n_levels = 0;  // femff_int: local fix\n"
+        "  for (unsigned int c = n_children; c > 1; c >>= dim)\n"
+        "    ++n_levels;")
+    s = s.replace(old_max,
+        "const unsigned int max_index_per_dim = (1u << n_levels) - 1;")
+    p = "pow(exp2(dim), n_levels - level - 1)"
+    e = "exp2(n_levels - level - 1)"
+    assert s.count(p) == 4 and s.count(e) == 5, (s.count(p), s.count(e))
+    s = s.replace(p, "(1u << (dim * (n_levels - level - 1)))")
+    s = s.replace("static_cast<unsigned int>((1u << (dim * (n_levels - "
+                  "level - 1))))", "(1u << (dim * (n_levels - level - 1)))")
+    s = s.replace(e, "(1u << (n_levels - level - 1))")
+    f.write_text(s)
+
 f = Path("src/test.cc")
 s = f.read_text()
-rom = ("  test_POD_groupwise();\n  test_LUPOD_extended();\n"
+rom =("  test_POD_groupwise();\n  test_LUPOD_extended();\n"
        "  test_LUPOD_extended_group_wise();\n")
 if "FEMFF_SKIP_ROM_TESTS" not in s:
     assert s.count(rom) == 1
