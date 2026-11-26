@@ -4,7 +4,7 @@ Stage 9b preparation; brief noise_stage7_brief.md, N5).
 Reads OpenMC MGXS library files in place (no copy) and writes a text
 summary, so the library itself can stay where it is:
 
-    python prep9b/n5_audit.py LIB.h5 [LIB2.h5 ...]  -> prep9b/n5_audit_log.md
+    python prep9b/n5_audit.py [-o OUT.md] LIB.h5 [LIB2.h5 ...]\n        (default OUT: prep9b/n5_audit_log.md)
 
 Per library: group structure, delayed groups, and per XSdata (material) and
 temperature:
@@ -97,9 +97,23 @@ def audit_temperature(name, tname, t, G, K):
                         sc = np.where(mult > 0, S / mult, 0).sum(axis=1)
                 else:
                     sc = out
-                bal = np.abs(sc + absn - tot) / tot
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    bal = np.abs(sc + absn - tot) / tot
                 log(f"    balance |sum scatter + absorption - total| / total:"
                     f" max {np.nanmax(bal):.2e}")
+                for g in np.where(~(bal <= 1e-3))[0][:10]:
+                    log(f"      group {g}: total {tot[g]:.4e}, absorption "
+                        f"{absn[g]:.4e}, scatter {sc[g]:.4e}, nu-scatter "
+                        f"{out[g]:.4e}")
+                if mflat is not None:
+                    for gin in range(G):
+                        row = mult[gin, gmin[gin] - 1:gmax[gin]]
+                        w = S[gin, gmin[gin] - 1:gmax[gin]]
+                        if w.sum() > 0 and np.ptp(row[w > 0]) > 1e-6:
+                            mbar = (w * row).sum() / w.sum()
+                            log(f"      row {gin}: multiplicity "
+                                f"{row[w > 0].min():.3f}-{row[w > 0].max():.3f}"
+                                f", nu-scatter-weighted mean {mbar:.4f}")
     for key in ("inverse-velocity", "decay-rate", "beta"):
         v = arr(t, key)
         if v is not None:
@@ -151,12 +165,15 @@ def audit(path):
 
 
 def main():
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    out = HERE / "n5_audit_log.md"
+    if len(args) >= 2 and args[0] == "-o":
+        out, args = Path(args[1]), args[2:]
+    if not args:
         raise SystemExit(__doc__)
     log("# N5 library audit")
-    for path in sys.argv[1:]:
+    for path in args:
         audit(path)
-    out = HERE / "n5_audit_log.md"
     out.write_text("\n".join(LOG) + "\n")
     print(f"\n-> {out}")
 
