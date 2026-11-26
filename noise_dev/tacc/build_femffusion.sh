@@ -25,6 +25,9 @@
 # LS6 lacks (/usr/lib64/libtbb.so; see below), and PyTrilinos, whose
 # constructor crashes femffusion.exe at load, is dropped from the linked
 # libraries (patchelf; see the end). None of this changes behaviour.
+# TACC's deal.II has no LAPACK: FEMFFUSION is compiled with
+# DEAL_II_WITH_LAPACK (its own LAPACK calls go to MKL) and the three ROM
+# unit tests, which need LAPACK inside libdeal_II, are skipped (see below).
 #
 # The same modules must be loaded to run femffusion.exe; the script writes
 # them to $FEMFFUSION_DIR/modules.sh.
@@ -91,6 +94,20 @@ for name in ("static_diffusion.cc", "static_full_spn.cc", "static_spn.cc",
                   "femff_mkdir(folderPath)")
     assert "std::filesystem" not in s, name
     f.write_text(s)
+
+# The three ROM (POD/LUPOD) unit tests need LAPACK inside libdeal_II
+# (LAPACKFullMatrix::compute_svd, invert); a deal.II built without LAPACK
+# runs them as silent no-ops. Guard them (no-op unless
+# FEMFF_SKIP_ROM_TESTS is defined; see below).
+f = Path("src/test.cc")
+s = f.read_text()
+rom = ("  test_POD_groupwise();\n  test_LUPOD_extended();\n"
+       "  test_LUPOD_extended_group_wise();\n")
+if "FEMFF_SKIP_ROM_TESTS" not in s:
+    assert s.count(rom) == 1
+    s = s.replace(rom, "#ifndef FEMFF_SKIP_ROM_TESTS  // local fix\n" + rom
+                  + "#endif\n")
+    f.write_text(s)
 PYEOF
 
 # Use deal.II's own compiler. FEMFFUSION's CMakeLists calls project()
@@ -107,6 +124,23 @@ DEALII_CXX=$(sed -n 's/^[Ss][Ee][Tt](DEAL_II_CXX_COMPILER "\(.*\)")/\1/p' \
 echo "deal.II config: $CFG"
 echo "deal.II C++ compiler: $DEALII_CXX"
 
+# TACC's dealii/9.4.0-real is configured without LAPACK (config.h:
+# "#undef DEAL_II_WITH_LAPACK"), although MKL is on its link line through
+# PETSc/Trilinos. deal.II's inline LAPACK wrappers (lapack_templates.h)
+# then do nothing in Release mode, so FEMFFUSION's own geev calls
+# (compute_eigs, used by the 2-group eigensolver) return zeros. Defining
+# DEAL_II_WITH_LAPACK for FEMFFUSION makes those calls real (MKL); the only
+# other header that reads it, full_matrix.templates.h, then uses BLAS
+# instead of its own loops, which is equivalent. LAPACK inside libdeal_II
+# stays off, which only the ROM features use: skip their three tests.
+EXTRA_CXX=""
+CFGH=$(find "$DEALII_ROOT" -path '*deal.II/base/config.h' 2> /dev/null |
+  head -1)
+if [ -n "$CFGH" ] && ! grep -q '^#define DEAL_II_WITH_LAPACK' "$CFGH"; then
+  EXTRA_CXX="-DDEAL_II_WITH_LAPACK -DFEMFF_SKIP_ROM_TESTS"
+  echo "deal.II has no LAPACK: compiling with $EXTRA_CXX"
+fi
+
 # Fresh configure: a cache from an earlier attempt keeps its compiler
 rm -rf CMakeCache.txt CMakeFiles
 
@@ -115,8 +149,14 @@ rm -rf CMakeCache.txt CMakeFiles
 # cmake_minimum_required(VERSION 2.8.8) (as for Abeille's docopt.cpp)
 cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DDEAL_II_DIR="$(dirname "$CFG")" \
-  ${DEALII_CXX:+-DCMAKE_CXX_COMPILER="$DEALII_CXX"}
+  ${DEALII_CXX:+-DCMAKE_CXX_COMPILER="$DEALII_CXX"} \
+  -DCMAKE_CXX_FLAGS="$EXTRA_CXX"
 make release
+if [ -n "$EXTRA_CXX" ] && ! grep -qiE 'mkl|lapack' \
+    CMakeFiles/femffusion.exe.dir/link.txt; then
+  echo "DEAL_II_WITH_LAPACK forced, but no LAPACK on the link line"
+  exit 1
+fi
 
 # deal.II's exported link line may name unversioned system libraries that
 # existed on TACC's build host but not on LS6 (e.g. /usr/lib64/libtbb.so;

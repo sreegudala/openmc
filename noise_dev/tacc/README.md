@@ -81,10 +81,25 @@ FEMFFUSION_PREREQ="intel/19.1.1 impi/19.0.9" bash tacc/build_femffusion.sh
 
 The script pins commit 1611f90 (the one in the design doc), runs
 FEMFFUSION's test suite, and writes the run-time modules to
-`$FEMFFUSION_DIR/modules.sh`. If 9.4.0 does not compile, try
-`FEMFFUSION_DEALII=dealii/9.7.1-real`. Locally FEMFFUSION is built against
-the Ubuntu 24.04 packages (`libdeal.ii-dev petsc-dev slepc-dev`), the
-versions it is tested with.
+`$FEMFFUSION_DIR/modules.sh`. Locally FEMFFUSION is built against the
+Ubuntu 24.04 packages (`libdeal.ii-dev petsc-dev slepc-dev`), the versions
+it is tested with (99/99 tests).
+
+TACC's `dealii/9.4.0-real` needs workarounds, all in the script and none
+changing results:
+- it compiles in a pre-C++17 mode: `std::filesystem` (output folder
+  creation) is replaced by POSIX `stat`/`mkdir`;
+- its link line names `/usr/lib64/libtbb.so`, absent on LS6: pointed at the
+  installed `libtbb.so.2`;
+- it links PyTrilinos, whose constructor segfaults: removed from the
+  executable and a private copy of `libdeal_II` (patchelf);
+- it is built without LAPACK: FEMFFUSION is compiled with
+  `DEAL_II_WITH_LAPACK` so its own eigenvalue calls reach MKL, and the
+  three ROM unit tests, which need LAPACK inside `libdeal_II`, are skipped.
+  The ROM features do not work on LS6; nothing in noise_dev uses them.
+
+`tacc/diag_femffusion.sh` locates a start-up crash (ld.so trace). The
+reference runs for Stage 9a are small and can equally be done locally.
 
 ## Bringing results back
 
