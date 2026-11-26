@@ -85,6 +85,18 @@ seeds, 100k × (100 + 200) per seed.
   1.014 ± 0.012, consistent with the forward k.
 - **LS6 runs.** 20 replicas × 2·10⁵ × (100 + 400) per form, against the
   forward k of the same form.
-- **Point-kinetic limit:** the TRIGA noise response at low ω against
+- **Point-kinetic limit (`run_n5.py g0`, then `g0-analyze`):** one LS6 job
+  per F7 frequency, 20 × 25 batches × 10⁴, nskip 5, cancellation 25 × 25 × 8
+  over the fuel box, `noise.keff` 1.00137 (vector form).
+  - Perturbation: absorption in the central thimble water (cell 3789,
+    r = 1.69 cm, full height) raised by 10 %.
+  - Response: the total fission rate, δF/F₀.
+  - Fit: one real δρ over all frequencies against G₀ (IFP β_eff,k, Λ_eff,
+    tallied λ_k), and against G₀ with the library's physical β_k.
+  - Local probe at 1 Hz (20 × 5000, 936 s on 16 threads): δF/F₀ = −0.0477 +
+    0.0062i ± 6.9 %. That is G₀(1 Hz) times δρ = −34.1 pcm, with an
+    imaginary remainder of 0.6 pcm: within about 1° of point kinetics. Each
+    batch ran 400–1300 noise fission generations of 1.5–7·10³ sites.
+- **Point-kinetic limit, original item:** the TRIGA noise response at low ω against
   G₀(ω) with the IFP β_eff = 715 ± 7 pcm and Λ_eff = 47.36 ± 0.10 µs
   (`results/kinetics/kinetics.json`), on LS6.

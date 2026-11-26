@@ -10,6 +10,14 @@ Modes:
             -> n5_kadj_{form}.npz
   analyze   transposed k against ce_mg_triga's forward k of the same form
             -> n5_log_kadj.md
+  g0        R forward noise replicas of the TRIGA model at one frequency:
+            10 % absorption increase in the central thimble water (cell
+            3789, r = 1.69 cm, full height), relative noise of the total
+            fission rate dF/F0 -> n5_g0_{f}Hz.npz
+  g0-analyze  point-kinetic limit: dF/F0 = G0(omega) drho with one real
+            drho fitted over all frequencies, G0 from the IFP beta_eff,k and
+            Lambda_eff (kinetics.json) and the library's tallied lambda_k;
+            also with the library's physical beta_k -> n5_log_g0.md
 
 The forward multigroup k is ce_mg_triga's own (user decision 2026-11-26):
 results/mgxs/kinetics_lib.md section 9 (commit e26de6a), mean of 5 seeds,
@@ -38,10 +46,26 @@ sys.path.insert(0, str(HERE.parent / "common"))
 from harness import run_replicas  # noqa: E402
 import adjoint_noise_lib as anl  # noqa: E402
 
+sys.path.insert(0, str(HERE.parent / "reference"))
+import ref_g0  # noqa: E402
+import h5py  # noqa: E402
+
 LIBS = {"vector": "casmo70_hist32_kin.h5",
         "matrix": "casmo70_hist32_kin_matrix.h5"}
 K_FORWARD = {"vector": (1.00137, 0.00009), "matrix": (1.00152, 0.00009)}
 K_CE = (1.0008, 0.0005)
+# ce_mg_triga results/mgxs/kinetics_lib.md sections 4-5: core values
+LAMBDA_K = np.array([0.01334, 0.03272, 0.12075, 0.30291, 0.85035, 2.85514])
+BETA_PHYS_K = np.array([22.5, 116.6, 111.3, 249.7, 103.1, 43.1]) * 1e-5
+# ce_mg_triga results/kinetics/kinetics.json (IFP, CE)
+BETA_EFF_K = ref_g0.TRIGA_BETA_K
+LAMBDA_EFF = ref_g0.TRIGA_LAMBDA
+CENTRAL_CELL = 3789                     # central thimble water (Water 2295)
+CENTRAL_MATERIAL = "Water_2295"
+EPS_ABS = 0.1
+F7 = (0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0)
+# cancellation mesh over the fuel box (zones.json fuel segments)
+FUEL_BOX = ((-24.44, -25.77, -39.25), (24.44, 25.77, 19.05))
 LOG = []
 
 
@@ -80,6 +104,122 @@ def adjoint_library(form, work):
         log(f"transposed {src.name} -> {dst.name}: {rep['materials']} "
             f"materials, max multiplicity {rep['max_multiplicity']:.3f}")
     return dst
+
+
+def central_amplitudes(library):
+    """'total' relative amplitudes for a pure absorption change
+    dSigma_a = EPS_ABS Sigma_a of the central thimble water."""
+    with h5py.File(library, "r") as f:
+        g = f[CENTRAL_MATERIAL]
+        t = g[next(k for k in g if k != "kTs")]
+        return EPS_ABS * t["absorption"][()] / t["total"][()]
+
+
+def noise_model(library, frequency, particles, batches, nskip,
+                static_inactive, cancellation=(25, 25, 8)):
+    model = mg_model(library, particles, 0, batches, ww=None)
+    s = model.settings
+    s.run_mode = "fixed source"
+    s.batches = batches
+    s.inactive = 0
+    cell = model.geometry.get_all_cells()[CENTRAL_CELL]
+    macro = getattr(cell.fill, "_macroscopic", None)
+    if macro != CENTRAL_MATERIAL:
+        raise SystemExit(f"cell {CENTRAL_CELL} holds {macro}, expected "
+                         f"{CENTRAL_MATERIAL}")
+    eta = 1.0 if frequency <= 30 else 3.0
+    noise = {"frequency": frequency, "eta": eta, "keff": K_FORWARD["vector"][0],
+             "nskip": nskip, "static_inactive": static_inactive,
+             "perturbations": [{"cells": [cell], "total": [
+                 complex(a) for a in central_amplitudes(library)]}]}
+    if cancellation:
+        cm = openmc.RegularMesh()
+        cm.lower_left, cm.upper_right = FUEL_BOX
+        cm.dimension = cancellation
+        noise["cancellation_mesh"] = cm
+    s.noise = noise
+    t = openmc.Tally(name="fission")
+    t.filters = [openmc.NoisePhaseFilter(), openmc.ComplexPartFilter()]
+    t.scores = ["fission"]
+    model.tallies = openmc.Tallies([t])
+    return model
+
+
+def run_g0(args):
+    f = args.freq
+    work = HERE / f"work_n5_g0_{f:g}Hz"
+    work.mkdir(exist_ok=True)
+    lib = (lib_dir() / LIBS["vector"]).resolve()
+    make = lambda: noise_model(lib, f, args.g0_particles, args.batches,
+                               args.nskip, args.static_inactive)
+    out = run_replicas(make, work / "reps", n_rep=args.reps,
+                       tally_names=("fission",), base_seed=args.base_seed)
+    v = out["values"]["fission"].reshape(args.reps, 2)
+    path = HERE / f"n5_g0_{f:g}Hz.npz"
+    np.savez(path, static=v[:, 0].real, noise=v[:, 1], frequency=f,
+             times=out["times"])
+    r = v[:, 1] / v[:, 0].real
+    log(f"G0 run {f:g} Hz: dF/F0 = {r.mean():.4e} (sigma Re "
+        f"{r.real.std(ddof=1) / np.sqrt(len(r)):.1e}, Im "
+        f"{r.imag.std(ddof=1) / np.sqrt(len(r)):.1e}), T="
+        f"{out['times'].sum():.0f}s -> {path.name}")
+
+
+def g0_analyze(args):
+    log("N5 point-kinetic limit: total fission rate dF/F0 against "
+        "G0(omega) drho, drho real, fitted over all frequencies")
+    log(f"  IFP beta_eff {BETA_EFF_K.sum() * 1e5:.1f} pcm, Lambda_eff "
+        f"{LAMBDA_EFF * 1e6:.2f} us; library physical beta "
+        f"{BETA_PHYS_K.sum() * 1e5:.1f} pcm; tallied lambda_k {LAMBDA_K}")
+    lam_eff = ref_g0.lambda_eff(BETA_EFF_K, LAMBDA_K)
+    rows = []
+    for f in F7:
+        path = HERE / f"n5_g0_{f:g}Hz.npz"
+        if not path.exists():
+            continue
+        d = np.load(path)
+        r = d["noise"] / d["static"]
+        R = r.size
+        sre = r.real.std(ddof=1) / np.sqrt(R)
+        sim = r.imag.std(ddof=1) / np.sqrt(R)
+        rows.append((f, r.mean(), sre, sim, R, d["times"].sum()))
+    if not rows:
+        log("  no n5_g0_*Hz.npz")
+        return
+    w = 2 * np.pi * np.array([x[0] for x in rows])
+    r = np.array([x[1] for x in rows])
+    sre = np.array([x[2] for x in rows])
+    sim = np.array([x[3] for x in rows])
+    for label, beta in (("IFP beta_eff", BETA_EFF_K),
+                        ("library physical beta", BETA_PHYS_K)):
+        G = ref_g0.g0(w, beta, LAMBDA_K, LAMBDA_EFF)
+        # least squares for real drho: residual r - G drho, weights 1/sigma^2
+        wr, wi = 1 / sre**2, 1 / sim**2
+        num = np.sum(wr * G.real * r.real + wi * G.imag * r.imag)
+        den = np.sum(wr * G.real**2 + wi * G.imag**2)
+        drho = num / den
+        sdrho = 1 / np.sqrt(den)
+        res = r - G * drho
+        chi2 = np.sum(wr * res.real**2 + wi * res.imag**2)
+        dof = 2 * len(r) - 1
+        log(f"\n  {label}: drho = {drho * 1e5:+.2f} +- {sdrho * 1e5:.2f} pcm"
+            f"; chi2 {chi2:.1f} / {dof}")
+        for (f, m, a, b, R, T), g in zip(rows, G):
+            p = g * drho
+            sA = np.hypot(m.real * a, m.imag * b) / abs(m)
+            sph = np.degrees(np.hypot(m.imag * a, m.real * b) / abs(m)**2)
+            log(f"    {f:6g} Hz: dF/F0 {abs(m):.4e} at "
+                f"{np.degrees(np.angle(m)):+8.2f} deg; G0 drho {abs(p):.4e}"
+                f" at {np.degrees(np.angle(p)):+8.2f} deg; amp ratio - 1 "
+                f"{abs(m) / abs(p) - 1:+.4f} (sigma {sA / abs(p):.4f}), "
+                f"dphase {np.degrees(np.angle(m / p)):+.2f} deg (sigma "
+                f"{sph:.2f}); R {R}, T {T:.0f}s")
+    log("\n  collision-scheme cut-offs (ref_g0.cutoffs, IFP values):")
+    for eta in (1.0, 3.0):
+        log(f"    eta {eta:g}: " + str(ref_g0.cutoffs(
+            eta, BETA_EFF_K.sum(), LAMBDA_EFF, lam_eff)))
+    (HERE / "n5_log_g0.md").write_text(
+        "# N5 point-kinetic limit\n\n```\n" + "\n".join(LOG) + "\n```\n")
 
 
 def mg_model(library, particles, inactive, active, ww=(0.5, 2.0)):
@@ -156,7 +296,12 @@ def analyze(args):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=["kadj", "analyze"])
+    p.add_argument("mode", choices=["kadj", "analyze", "g0", "g0-analyze"])
+    p.add_argument("--freq", type=float, default=1.0)
+    p.add_argument("--g0-particles", type=int, default=10000)
+    p.add_argument("--batches", type=int, default=25)
+    p.add_argument("--nskip", type=int, default=5)
+    p.add_argument("--static-inactive", type=int, default=100)
     p.add_argument("--form", choices=list(LIBS), default="vector")
     p.add_argument("--reps", type=int, default=20)
     p.add_argument("--base-seed", type=int, default=1)
@@ -167,8 +312,12 @@ def main():
     log(f"TRIGA_DIR {triga_dir()}, TRIGA_LIB_DIR {lib_dir()}")
     if args.mode == "kadj":
         run_kadj(args)
-    else:
+    elif args.mode == "analyze":
         analyze(args)
+    elif args.mode == "g0":
+        run_g0(args)
+    else:
+        g0_analyze(args)
 
 
 if __name__ == "__main__":
