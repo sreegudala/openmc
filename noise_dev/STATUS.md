@@ -18,15 +18,14 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 waits for the regenerated library | `prep9b/n3c_gate.md` |
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
-| 9 | Many-group benchmark (C5G7) and TRIGA dry run | 9a: model, driver and FEMFFUSION reference ready; LS6 runs pending. 9b: waiting for the N5 library | `stage9/` |
+| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: waiting for the N5 library | `stage9/stage9a_gate.md` |
 
 ## Next
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9a (amendment 2026-11-25): OpenMC eigenvalue (k to ≤ 3 pcm) then
-  noise runs at cancellation 51 and 102 on LS6; FEMFFUSION reference run
-  locally (`stage9/stage9a_femffusion.npz`).
+- Decide whether the per-cell tolerance rule should allow for the number
+  of cells (stage9a_gate.md, end) before 9b; needs an amendment.
 - Stage 9b (TRIGA): waiting for the N5 library.
 
 ## Open items and known limitations
@@ -92,10 +91,19 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 2026-11-22 | 9b prep | Stage 9b preparation (N3c weight windows, N5) runs before Stage 8. Noise-mode windows: absolute (source weight scale), modulus comparisons, phase-preserving split, fission sites checked at birth, windows replace the noise roulette inside their mesh; tests N3c-u/a/b |
 | 2026-11-22b | 8 | Pin orientation resolved by symmetry (Abeille's used); gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, from tallies) as a second estimator; statistics sized from a measured forward σ |
 | 2026-11-23 | 8 | Vibration coefficient c_n derived; sampling rule (each side's own kernel and fission data, normalised by the collision material's Σt); `vibration` input |
+| 2026-11-26 | 9a | Reference uses FEMFFUSION's full noise operator (`-matrixfree_type_A full_allocated`): the default non_diagonal SP_N noise operator omits the cross-moment Marshak terms at vacuum boundaries (δφ/φ₀ fell to 0.75 at the vacuum edge in SP3, 0.60 in SP5, not in SP1) |
 | 2026-11-25 | 9a | Reference: FEMFFUSION `ref1_FE2` SP3 of examples/2D_C5G7_NN as shipped (UO2 kinetics on the perturbed MOX mix reproduced); relative noise per pin cell and group; outside the perturbed assembly, amplitude 5 % and phase 2° where OpenMC is precise enough, ≥ half the cells evaluated, both cancellation meshes (51, 102); OpenMC k from a separate eigenvalue run, σ_k ≤ 3 pcm |
 
 ## Log
 
+- 2026-11-26: **Stage 9a passed** (12/15 with disposition).
+  - OpenMC k = 1.186489 ± 2.2 pcm (job 3615390); noise at cancellation 51
+    and 102 (jobs 3615392/3).
+  - Against FEMFFUSION's shipped noise operator every group failed, in the
+    reflector at the vacuum boundary: that operator omits the cross-moment
+    Marshak terms (amendment 2026-11-26). With its full operator: relative
+    noise median −0.8 % / −1.0 %, core sums within 1 % and 0.1°, phases
+    within 1.5°; 3 single reflector cells over 5 % at 3.6–3.8σ, dispositioned.
 - 2026-11-25: Stage 9a set up (amendment 2026-11-25). `stage9/c5g7.py`
   reads FEMFFUSION's C5G7 noise example in place; OpenMC k = 1.18674 ±
   0.00024 (C5G7 transport reference 1.18655). FEMFFUSION reference run

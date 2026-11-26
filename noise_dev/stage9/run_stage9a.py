@@ -6,7 +6,10 @@ Modes (run separately; each writes an npz in this directory):
 
   femffusion  FEMFFUSION on its own example: the shipped configurations
               ref1_FE2 (the reference: mesh_ref1, one radial refinement, FE
-              degree 2, SP3) and ref0_FE1, plus ref1_FE2 with SP1 and SP5
+              degree 2, SP3) and ref0_FE1, plus ref1_FE2 with SP1 and SP5,
+              all with the full noise operator (-matrixfree_type_A
+              full_allocated; amendment 2026-11-26), and the shipped default
+              operator (non_diagonal) on ref1_FE2 SP3 and SP5, logged
               -> stage9a_femffusion.npz
   eigen       R OpenMC k-eigenvalue replicas -> stage9a_eigen{tag}.npz
               (k per replica; the noise runs divide fission by their mean)
@@ -22,10 +25,19 @@ Gate (amendment 2026-11-25): on every pin cell outside the perturbed
 assembly and every group where the OpenMC replica mean is precise enough
 (amplitude sigma < 5/3 %, phase sigma < 2/3 deg, as in harness
 std_criterion), amplitude within 5 % and phase within 2 deg of FEMFFUSION
-ref1_FE2 SP3; at least half of those cells evaluated in every group; OpenMC's
+ref1_FE2 SP3 with the full noise operator; at least half of those cells evaluated in every group; OpenMC's
 k known to 3 pcm. Logged: the perturbed assembly, core sums, the static
 shape, FEMFFUSION's discretisation (ref0_FE1) and SPN-order (SP1, SP5)
-spreads, and the two cancellation meshes against each other.
+spreads, the two cancellation meshes against each other, and the same
+comparison against the shipped default (non_diagonal) noise operator.
+
+Amendment 2026-11-26: FEMFFUSION's default non_diagonal SPN noise operator
+omits the cross-moment Marshak terms marshack_coeff[mi][mj] (mi != mj) at
+vacuum boundaries (its off-diagonal moment blocks are volume-only mass
+operators), which its static SPN operator includes. The noise and static
+boundary conditions then differ: dphi/phi_0 falls towards the vacuum
+boundary, more at SP5 than SP3 and not at SP1. full_allocated assembles the
+same equations with those terms.
 
 FEMFFUSION is GPL-3.0 and lives outside the repo ($FEMFFUSION_DIR, built by
 tacc/build_femffusion.sh); its example inputs are read in place.
@@ -50,12 +62,16 @@ import c5g7  # noqa
 
 LOG = []
 N, G = c5g7.N, c5g7.G
-FEMFF_CONFIGS = {             # name: (shipped prm, N_SPN)
-    "ref1_FE2_SP3": ("c5g7_ref1_FE2_DSP3.prm", 3),
-    "ref0_FE1_SP3": ("c5g7_ref0_FE1_DSP3.prm", 3),
-    "ref1_FE2_SP1": ("c5g7_ref1_FE2_DSP3.prm", 1),
-    "ref1_FE2_SP5": ("c5g7_ref1_FE2_DSP3.prm", 5),
+FULL = "-matrixfree_type_A full_allocated"
+FEMFF_CONFIGS = {             # name: (shipped prm, N_SPN, extra options)
+    "ref1_FE2_SP3": ("c5g7_ref1_FE2_DSP3.prm", 3, FULL),
+    "ref0_FE1_SP3": ("c5g7_ref0_FE1_DSP3.prm", 3, FULL),
+    "ref1_FE2_SP1": ("c5g7_ref1_FE2_DSP3.prm", 1, FULL),
+    "ref1_FE2_SP5": ("c5g7_ref1_FE2_DSP3.prm", 5, FULL),
+    "ref1_FE2_SP3_nondiag": ("c5g7_ref1_FE2_DSP3.prm", 3, ""),
+    "ref1_FE2_SP5_nondiag": ("c5g7_ref1_FE2_DSP3.prm", 5, ""),
 }
+SHIPPED = "ref1_FE2_SP3_nondiag"
 REFERENCE = "ref1_FE2_SP3"
 PERT_ASSEMBLY = (slice(0, 17), slice(17, 34))     # rows (y), columns (x)
 PERT_PIN = (15, 18)
@@ -94,10 +110,9 @@ def run_femffusion(args):
         raise SystemExit(f"{exe} not found (tacc/build_femffusion.sh)")
     work = (HERE / "work_9a_femffusion").resolve()
     work.mkdir(exist_ok=True)
-    out = {}
     configs = args.configs.split(",") if args.configs else list(FEMFF_CONFIGS)
     for name in configs:
-        prm_name, nspn = FEMFF_CONFIGS[name]
+        prm_name, nspn, opts = FEMFF_CONFIGS[name]
         text = (c5g7.example_dir() / prm_name).read_text()
         text = re.sub(r"(set N_SPN\s*=\s*)\d+", rf"\g<1>{nspn}", text)
         text = re.sub(r"(set Print_Grid_Flag\s*=\s*)\w+", r"\g<1>false", text)
@@ -105,7 +120,7 @@ def run_femffusion(args):
                       rf"\g<1>{work / name}.out", text)
         prm = work / f"{name}.prm"
         prm.write_text(text)
-        cmd = f"OMP_NUM_THREADS=1 ./femffusion.exe -f {prm}"
+        cmd = f"OMP_NUM_THREADS=1 ./femffusion.exe -f {prm} {opts}"
         if (root / "modules.sh").exists():     # LS6
             cmd = f"source modules.sh && {cmd}"
         t0 = time.time()
@@ -113,18 +128,22 @@ def run_femffusion(args):
             subprocess.run(["bash", "-c", cmd], cwd=root, stdout=fh,
                            stderr=subprocess.STDOUT, check=True)
         dt = time.time() - t0
-        k, static, noise = parse_femffusion_out(work / f"{name}.out")
-        out[name] = (k, static, noise, dt)
-        log(f"FEMFFUSION {name}: k = {k:.5f}, {dt:.0f} s")
+        save_femffusion(name, work / f"{name}.out", dt)
+
+
+def save_femffusion(name, out_file, dt=0.0):
+    """Parse one FEMFFUSION output into stage9a_femffusion.npz (saved after
+    every configuration, so a later failure keeps the earlier ones)."""
+    k, static, noise = parse_femffusion_out(out_file)
+    log(f"FEMFFUSION {name}: k = {k:.5f}, {dt:.0f} s")
     path = HERE / "stage9a_femffusion.npz"
     old = dict(np.load(path)) if path.exists() else {}
-    for name, (k, static, noise, dt) in out.items():
-        old[f"{name}_k"] = np.array(k)
-        old[f"{name}_static"] = static
-        old[f"{name}_noise"] = noise
-        old[f"{name}_time"] = np.array(dt)
+    old[f"{name}_k"] = np.array(k)
+    old[f"{name}_static"] = static
+    old[f"{name}_noise"] = noise
+    old[f"{name}_time"] = np.array(dt)
     np.savez(path, **old)
-    log(f"-> {path.name}")
+    log(f"  -> {path.name}")
 
 
 # ---------------------------------------------------------------- OpenMC
@@ -240,12 +259,15 @@ def analyze(args):
         if name == REFERENCE or f"{name}_noise" not in F:
             continue
         r = F[f"{name}_noise"] / F[f"{name}_static"]
-        m = out[None] & fuel[None] & np.ones((G, 1, 1), bool)
-        da = np.abs(np.abs(r[m]) / np.abs(ref_rel[m]) - 1)
-        dp = np.abs(np.degrees(np.angle(r[m] / ref_rel[m])))
-        log(f"  FEMFFUSION {name} vs {REFERENCE} (fuel outside the perturbed"
-            f" assembly): max |amp ratio - 1| {da.max():.4f}, max |dphase| "
-            f"{dp.max():.2f} deg")
+        msg = []
+        for region, reg in (("fuel", out & fuel), ("reflector", out & ~fuel)):
+            m = reg[None] & np.ones((G, 1, 1), bool)
+            da = np.abs(np.abs(r[m]) / np.abs(ref_rel[m]) - 1)
+            dp = np.abs(np.degrees(np.angle(r[m] / ref_rel[m])))
+            msg.append(f"{region} max |amp ratio - 1| {da.max():.4f}, max "
+                       f"|dphase| {dp.max():.2f} deg")
+        log(f"  FEMFFUSION {name} vs {REFERENCE} (outside the perturbed "
+            f"assembly): " + "; ".join(msg))
 
     for label, (a, rel) in runs.items():
         R = rel.shape[0]
@@ -278,6 +300,19 @@ def analyze(args):
                 f"{np.percentile(A, 5):+.4f}, {np.percentile(A, 95):+.4f}],"
                 f" dphase median {np.median(P):+.2f} deg; z hist (logged) "
                 f"mean {info['z_mean']:+.2f} std {info['z_std']:.2f}")
+        # logged: the same check against the shipped default operator
+        if f"{SHIPPED}_noise" in F:
+            ship = F[f"{SHIPPED}_noise"] / F[f"{SHIPPED}_static"]
+            res = []
+            for g in range(G):
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    _, info = std_criterion(mean[g], s_re[g], s_im[g],
+                                            ship[g], AMP_TOL, PHASE_TOL,
+                                            mask=out & np.isfinite(mean[g]))
+                ok_s = info["ok_amp"] and info["ok_ph"]
+                res.append(f"g{g + 1} {'pass' if ok_s else 'FAIL'} (max amp "
+                           f"{info['max_rel_amp']:.3f})")
+            log(f"    against {SHIPPED} (logged): " + ", ".join(res))
         # logged: perturbed pin, perturbed assembly, core sums
         for g in (0, 3, 6):
             r, c = PERT_PIN
