@@ -35,7 +35,7 @@ LD_DEBUG=libs timeout 120 ./femffusion.exe -t > diag.out 2>&1
 echo "[exit status $?]"
 grep -E 'calling init|transferring control' diag.out | tail -6 |
   sed 's/^ *[0-9]*:[[:space:]]*//'
-if grep -q 'transferring control' diag.out; then
+if grep -q 'transferring control: ./femffusion.exe' diag.out; then
   echo "(main was reached: the crash is after start-up loading)"
 else
   echo "(main was NOT reached: the crash is in a library constructor)"

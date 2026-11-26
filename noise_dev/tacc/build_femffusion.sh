@@ -22,7 +22,9 @@
 # Pinned to commit 1611f90 (design doc) plus one local fix: std::filesystem
 # replaced by POSIX stat/mkdir for a pre-C++17 deal.II build (see below).
 # The link line is also adjusted where deal.II names a system library that
-# LS6 lacks (/usr/lib64/libtbb.so; see below). Neither changes behaviour.
+# LS6 lacks (/usr/lib64/libtbb.so; see below), and PyTrilinos, whose
+# constructor crashes femffusion.exe at load, is dropped from the linked
+# libraries (patchelf; see the end). None of this changes behaviour.
 #
 # The same modules must be loaded to run femffusion.exe; the script writes
 # them to $FEMFFUSION_DIR/modules.sh.
@@ -158,6 +160,42 @@ for p, r in fixes.items():
 PYEOF
 
 make -j "${BUILD_JOBS:-16}"
+
+# TACC's deal.II links all of Trilinos 13, including PyTrilinos, whose
+# library constructor segfaults in a C++ program (femffusion.exe died in
+# libpytrilinos.so.13's init, before main; diag_femffusion.sh). Nothing uses
+# PyTrilinos: drop it from femffusion.exe and from a private copy of
+# libdeal_II (TACC's install is untouched), found first through
+# femffusion.exe's RPATH.
+DROP=libpytrilinos.so.13
+if ldd ./femffusion.exe | grep -q "$DROP"; then
+  if ! command -v patchelf > /dev/null; then
+    if [ ! -x "$DEST/.tools/bin/patchelf" ]; then
+      python3 -m venv "$DEST/.tools"
+      "$DEST/.tools/bin/pip" install -q patchelf
+    fi
+    PATH="$DEST/.tools/bin:$PATH"
+  fi
+  DLIB=$(ldd ./femffusion.exe | awk '/libdeal_II[^ ]*\.so/ {print $3; exit}')
+  mkdir -p "$DEST/lib"
+  cp -f "$DLIB" "$DEST/lib/"
+  COPY="$DEST/lib/$(basename "$DLIB")"
+  # the copy keeps finding its dependencies where the original does
+  OLD=$(patchelf --print-rpath "$DLIB" | sed "s|\$ORIGIN|$(dirname "$DLIB")|g")
+  patchelf --set-rpath "$(dirname "$DLIB")${OLD:+:$OLD}" "$COPY"
+  patchelf --remove-needed "$DROP" "$COPY"
+  patchelf --remove-needed "$DROP" ./femffusion.exe
+  OLD=$(patchelf --print-rpath ./femffusion.exe)
+  patchelf --force-rpath --set-rpath "$DEST/lib${OLD:+:$OLD}" ./femffusion.exe
+  echo "dropped $DROP; libdeal_II from $COPY"
+  if ldd ./femffusion.exe | grep -q "$DROP"; then
+    echo "$DROP is still loaded, through:"
+    for l in $(ldd ./femffusion.exe | awk '$3 ~ /^\// {print $3}'); do
+      readelf -d "$l" 2> /dev/null | grep -q "NEEDED.*$DROP" && echo "  $l"
+    done
+    exit 1
+  fi
+fi
 
 {
   echo "# modules for $DEST/femffusion.exe (written by build_femffusion.sh)"
