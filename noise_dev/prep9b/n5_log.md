@@ -52,16 +52,39 @@ library from either form in about 1 s (matrix fission form; 185 materials;
 | k∞ matrix against vector form | −1.3e-5 to +1.7e-5 per material, though the matrix χ depends on the incident group (χ spread up to 0.29). Production per g_in and scattering are identical in the two forms |
 | Adjoint second-moment radius (N3c) | above 1 in every material (water 1.40, graphite 1.53, fuel up to 1.90; max multiplicity 3.08): adjoint TRIGA runs need the N3c weight windows |
 
-## Still to do
+## Forward MG k (ce_mg_triga, user decision 2026-11-26)
 
-- **Forward MG k against CE.** Take it from ce_mg_triga's own check of
-  this library (user decision 2026-11-26), with the status of its
-  vector-against-matrix k gap (commit 32ad772): `results/mgxs/kinetics_lib.md`
-  and any notes on the gap. The infinite-medium comparison above shows the
-  two forms agree per material, so a full-core gap would come from χ(E_in)
-  against leakage. The form used in 9b follows ce_mg_triga's resolution.
-- **Transposed k in the full core:** an MG eigenvalue run of the TRIGA
-  model on the transposed library, against the forward one.
+From ce_mg_triga `results/mgxs/kinetics_lib.md` (commit e26de6a, "Task I:
+vector-matrix k gap settled"), sections 8–9: multigroup MC, mean of 5
+seeds, 100k × (100 + 200) per seed.
+
+| | k | against CE |
+|---|---|---|
+| CE | 1.0008 ± 0.0005 | |
+| vector form | 1.00137 ± 0.00009 | +57 ± 51 pcm |
+| matrix form | 1.00152 ± 0.00009 | +72 ± 51 pcm |
+
+- **The gap is settled.** Vector − matrix is −16 ± 13 pcm (−1.2σ). The
+  earlier −46 pcm came from one seed.
+- **Infinite medium.** ce_mg_triga's own k∞ comparison
+  (`results/mgxs_ang/gapcheck.json`) matches the one above: vector −
+  matrix within 2.5 pcm per material, k∞ 1.46274–1.57710.
+- **Hand-off.** Transpose the readable keys only; this is what
+  `adjoint_noise_lib` does. Use the tallied λ_k, and these k for
+  `noise.keff`.
+- **β.** The library's physical β is 646 pcm (core), against the IFP β_eff
+  of 715 ± 7 pcm (β_eff/β = 1.107). χ_d per family is in the library, so
+  the multigroup response should carry the delayed-spectrum importance.
+
+## Transposed k on the TRIGA model (`run_n5.py kadj`)
+
+- **Without variance control the run is unusable.** A local smoke run
+  (5000 × 20 active) gave 0.586 ± 0.082: the transposed library's second
+  moment is unbounded (multiplicity up to 3.08).
+- **A flat weight window fixes it.** One mesh cell, bounds 0.5–2.0, gives
+  1.014 ± 0.012, consistent with the forward k.
+- **LS6 runs.** 20 replicas × 2·10⁵ × (100 + 400) per form, against the
+  forward k of the same form.
 - **Point-kinetic limit:** the TRIGA noise response at low ω against
   G₀(ω) with the IFP β_eff = 715 ± 7 pcm and Λ_eff = 47.36 ± 0.10 µs
   (`results/kinetics/kinetics.json`), on LS6.
