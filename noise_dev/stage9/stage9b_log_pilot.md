@@ -119,9 +119,67 @@ Same size: 4 replicas × 4 batches × 5000.
   gate size the contraction's σ is expected near 2–3 % per detector, and the
   forward's near 0.5 % at arc0.
 
-## LS6 pilot (next)
+## LS6 pilot, 1 Hz (jobs 3617424–3617428, commit 6a358d348)
 
-1 Hz, 20 replicas × 25 batches × 10⁴ each: forward mesh A, and adjoint
-arc0, arc3 and arc5 with the windows above (`stage9b_ww.npz`, committed).
-It measures the σ of every gated quantity and settles the Im question
-before the 49-check gate runs are sized.
+20 replicas × 25 batches × 10⁴ per run. Forward mesh A; adjoints with the
+random-ray CADIS windows and cancellation mesh A.
+
+**Forward** (wall time about 47 min per replica, 732 generations per batch):
+
+| detector | δd | σ(δd) | σ(d₀) | δd/d₀ |
+|---|---|---|---|---|
+| det0 | −4.05e-5 + 4.9e-6i | 0.9 % | 4.4 % | −0.0455 + 0.0055i |
+| det1 | −1.14e-5 + 1.4e-6i | 1.1 % | 7.1 % | −0.0417 + 0.0050i |
+| det2 | −2.98e-6 + 3.5e-7i | 1.3 % | 16 % | −0.0485 + 0.0057i |
+| det3 | −8.85e-7 + 1.1e-7i | 2.1 % | 27 % | −0.0608 + 0.0072i |
+| det4 | −3.07e-7 + 3.7e-8i | 3.2 % | 46 % | −0.0667 + 0.0080i |
+| det5 | −1.09e-7 + 1.3e-8i | 3.8 % | 58 % | −0.0515 + 0.0061i |
+| arc0 | −5.15e-4 + 6.2e-5i | 0.9 % | 1.7 % | −0.0449 + 0.0054i |
+| arc1 | −1.58e-4 + 1.9e-5i | 1.0 % | 2.0 % | −0.0444 + 0.0053i |
+| arc2 | −4.66e-5 + 5.6e-6i | 0.9 % | 4.7 % | −0.0411 + 0.0049i |
+| arc3 | −1.59e-5 + 1.9e-6i | 1.1 % | 8.0 % | −0.0442 + 0.0054i |
+| arc4 | −6.24e-6 + 7.5e-7i | 1.6 % | 11 % | −0.0425 + 0.0051i |
+| arc5 | −2.80e-6 + 3.4e-7i | 2.1 % | 21 % | −0.0475 + 0.0057i |
+
+- **δF/F₀** = −0.0460 + 0.0053i (σ 0.9 %). N5's 1 Hz value, on a regular
+  25 × 25 × 8 mesh, is −0.0467 + 0.0054i, within about 1σ.
+- **The noise δd** is sampled to 1–4 % everywhere. The static d₀ is not
+  (16–58 % at the far point detectors), which confirms δd for the mesh
+  gate. δd/d₀ is −0.041 to −0.049 wherever d₀ is usable: the response is
+  global, as point kinetics predicts.
+- **Static k** 1.00149 ± 0.00026: +12 ± 26 pcm against `noise.keff`, too
+  coarse to test N5's 17 pcm.
+
+**Reciprocity:**
+
+| | forward δd | contraction | \|f/c\| − 1 | phase | Im/Re fwd, contr | paired t (Re, Im) | Hotelling p | FOM adj/fwd |
+|---|---|---|---|---|---|---|---|---|
+| arc0 | −5.15e-4 (0.9 %) | −4.83e-4 (3.4 %) | +6.6 % | −0.16° | −0.121, −0.118 | −2.09, +1.27 | 0.15 | 0.11 |
+| arc3 | −1.59e-5 (1.1 %) | −1.32e-5 (9.0 %) | +20 % | −0.62° | −0.121, −0.110 | −2.54, +0.87 | 0.07 | 0.06 |
+| arc5 | | | | | | | | |
+
+- **The phase is now right.** The adjoint's Im/Re matches the forward's,
+  and the local pilot's Im deficit was small-sample skew.
+- **The adjoint game converges like the forward.** The Σ|w| generation
+  ratio is 0.9932 for arc0 against 0.9931 forward, with chains up to 1118
+  generations.
+- **Both contractions are low,** at 2.1σ and 2.5σ in Re, which combine to
+  p ≈ 0.01. Possible causes:
+  - small-sample skew, since arc3's per-replica Im has one value 10× the
+    rest;
+  - smoothing by cancellation in the adjoint (bin averaging moves weight
+    within a bin; only the forward has an A-against-B check);
+  - a systematic not yet identified.
+- **arc5 aborted** at batch 6 on the growth guard. Its first fission
+  generation held about one site, because few adjoint particles get from
+  81 cm into the core, and the normal rise to 106 sites exceeded the
+  guard's 100×. The guard is now 10⁶ for adjoint runs (`--growth-limit`),
+  and the gated generation ratio judges boundedness.
+
+## LS6 pilot, second round (1 Hz)
+
+- forward mesh B (needed for the gate anyway);
+- adjoint arc0 with cancellation mesh B (tests adjoint cancellation
+  smoothing);
+- adjoint arc0 and arc3 with a new seed and 4× the batches (skew or bias);
+- adjoint arc5 rerun with the raised guard.

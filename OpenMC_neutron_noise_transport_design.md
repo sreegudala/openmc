@@ -957,7 +957,7 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
       - Both meshes distinguish the outgoing group.
     - **Gate, per frequency.**
       1. **Reciprocity:** `paired_correlated` on (arc0, arc3, arc5), comparing forward $\delta d$ (mesh A) with the contraction.
-      2. **$\sum|w|$ bounded:** every run completes without the growth guard or the generation cap firing. That covers forward A, forward B and each adjoint. In addition, the generation ratio of the replica-summed $\sum|w|$, fitted over the generations every batch reaches (`stage3.gen_ratio`), is below 1.
+      2. **$\sum|w|$ bounded:** every run completes without the growth guard or the generation cap firing. That covers forward A, forward B and each adjoint. In addition, the generation ratio of the replica-summed $\sum|w|$, fitted over the generations every batch reaches (`stage3.gen_ratio`), is below 1. The adjoint runs set the growth guard to 10⁶, because its reference (the first fission generation) holds only a few sites for a far detector. In the LS6 pilot arc5 tripped the default guard on a normal rise from one site to 106, so the ratio, not the guard, carries this check for the adjoints.
       3. **Two meshes:** `paired_correlated` between A and B on the twelve detectors' $\delta d$ (per static source particle) and $\delta F/F_0$. The two runs share seeds, so their static phases are identical and the test is paired. $\delta d$ is used rather than $\delta d/d_0$ because the static $d_0$ at the far detectors is barely sampled: zero in some replicas of the smoke test.
 
       This gives 49 checks: 7 reciprocity, 7 mesh and 35 $\sum|w|$. None applies a per-entry STD tolerance, so the 3σ rule of 2026-11-26b does not enter.

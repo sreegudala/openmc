@@ -253,13 +253,19 @@ def arc_source(det, edges, R):
                                     angle=openmc.stats.Isotropic())
 
 
-def adjoint_model(f, det, particles, batches, ww="cadis", cancel="A"):
+def adjoint_model(f, det, particles, batches, ww="cadis", cancel="A",
+                  growth_limit=1.0e6):
     work = HERE / "work_stage9b_lib"
     work.mkdir(exist_ok=True)
     lib = n5.adjoint_library("vector", work)
     model = base_model(lib, particles, batches)
     s = model.settings
-    s.noise = {"frequency": f, "eta": eta(f), "keff": KEFF}
+    # The growth guard compares each generation with the first, which for a
+    # far detector holds a handful of sites (arc5 in the LS6 pilot: one site,
+    # then a normal rise to 106 tripped the default limit of 100). The
+    # gated generation ratio of sum|w| judges boundedness instead.
+    s.noise = {"frequency": f, "eta": eta(f), "keff": KEFF,
+               "growth_limit": growth_limit}
     if cancel != "none":
         # the adjoint's transposed multiplicity makes its offspring heavy-
         # tailed; without cancellation the phase is lost (pilot log)
@@ -448,12 +454,14 @@ def run_adjoint(args):
     det = {x["name"]: x for x in detectors()}[args.detector]
     tag = (f"{det['name']}_{args.ww}"
            + ("" if args.adj_cancel == "A" else f"_c{args.adj_cancel}")
+           + ("" if args.base_seed == 1 else f"_s{args.base_seed}")
            + f"_{f:g}Hz")
     work = HERE / f"work_stage9b_adj_{tag}"
     work.mkdir(exist_ok=True)
     out = run_replicas(
         lambda: adjoint_model(f, det, args.adj_particles, args.adj_batches,
-                              args.ww, args.adj_cancel),
+                              args.ww, args.adj_cancel,
+                              args.growth_limit),
         work / "reps", n_rep=args.reps, tally_names=("pt", "gmap"),
         base_seed=args.base_seed + ADJ_SEED_OFFSET, extra=read_noise)
     R = args.reps
@@ -670,6 +678,7 @@ def main():
     p.add_argument("--detectors", default=",".join(GATE_DETS))
     p.add_argument("--importance", choices=["rr", "forward"], default="rr")
     p.add_argument("--adj-cancel", choices=["A", "B", "none"], default="A")
+    p.add_argument("--growth-limit", type=float, default=1.0e6)
     p.add_argument("--detector", default="arc0")
     p.add_argument("--ww", choices=["cadis", "flat", "none"],
                    default="cadis")

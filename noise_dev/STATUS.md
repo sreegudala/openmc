@@ -24,11 +24,11 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9b (`stage9/run_stage9b.py`, amendment 2026-11-26c): the LS6
-  pilot at 1 Hz (forward mesh A; adjoint arc0, arc3, arc5; 20 × 25 × 10⁴
-  each) measures σ and settles whether the adjoint's low Im in the local
-  pilot is small-sample skew; then size the 49-check gate runs. The LS6
-  build needs `odev_build` (commit 3d32d7862).
+- Stage 9b (`stage9/run_stage9b.py`, amendment 2026-11-26c): second LS6
+  pilot round at 1 Hz (forward mesh B; adjoint arc0 with cancellation B;
+  arc0 and arc3 with 4× batches; arc5 rerun) to settle whether the 7–20 %
+  low contractions are skew, adjoint cancellation smoothing or a
+  systematic; then size the 49-check gate runs.
 
 ## Open items and known limitations
 
@@ -102,6 +102,13 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-27: Stage 9b LS6 pilot at 1 Hz (`stage9/stage9b_log_pilot.md`).
+  - Forward δd at 1–4 % on all 12 detectors.
+  - The adjoint phase now matches: Im/Re −0.118 against −0.121.
+  - Reciprocity passes at arc0 (+6.6 %, t −2.1) and arc3 (+20 %, t −2.5),
+    both low in the same direction.
+  - arc5 tripped the growth guard on a one-site first generation; the guard
+    is now 10⁶ for adjoint runs.
 - 2026-11-26: Stage 9b designed (amendment 2026-11-26c) and piloted
   locally (`stage9/stage9b_log_pilot.md`).
   - Linearity in the absorber strength is exact (2e-13), so the strength is
