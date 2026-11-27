@@ -252,6 +252,25 @@ def test_noise_weight_windows_complex(run_in_tmpdir, windows):
     assert abs(abs(v) / abs(ref) - 1) < 0.03
 
 
+def test_noise_weight_windows_birth_roulette_threads(run_in_tmpdir):
+    # Absolute windows above the unit source weight roulette every source
+    # particle at birth, before its first step sets the random number
+    # stream; with several threads a fresh Particle's stream was undefined
+    # (segfault in prn, Stage 9b smoke test)
+    phase = 2.0
+    model = _ww_model(windows=True, phase=phase)
+    ww = model.settings.weight_windows[0]
+    ww.lower_ww_bounds = [2.0]
+    ww.upper_ww_bounds = [4.0]
+    sp = model.run(threads=4)
+    with openmc.StatePoint(sp) as s:
+        st = openmc.noise.complex_tally_stats(s.get_tally(name='flux'))
+    ref = np.exp(1j * phase) / (0.5 + 0.5j)
+    v = st['value'].ravel()[0]
+    assert abs(v.real - ref.real) < 4 * st['re_std'].ravel()[0]
+    assert abs(v.imag - ref.imag) < 4 * st['im_std'].ravel()[0]
+
+
 def test_noise_refuses_weight_window_generators(run_in_tmpdir):
     # Generators tally a real flux; noise mode must refuse them
     with pytest.raises(RuntimeError, match='[Gg]enerators'):

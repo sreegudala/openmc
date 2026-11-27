@@ -762,9 +762,14 @@ void initialize_particle_track(
   // Set particle track.
   p.write_track() = check_track_criteria(p);
 
-  // Set the particle's initial weight window value.
+  // Set the particle's initial weight window value. In noise mode the
+  // windows are absolute, so a source particle can be rouletted or split at
+  // birth; those draw random numbers, and the stream is not otherwise set
+  // until the track's first step (stream_ of a new Particle is
+  // uninitialised).
   if (!is_secondary) {
     p.wgt_ww_born() = -1.0;
+    p.stream() = STREAM_TRACKING;
     apply_weight_windows(p);
   }
 
