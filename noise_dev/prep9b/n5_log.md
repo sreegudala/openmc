@@ -100,18 +100,59 @@ seeds, 100k × (100 + 200) per seed.
     1.7e-5), so this is taken as a fluctuation. It does not affect 9b, which
     uses one form throughout: the vector form, whose forward k is
     `noise.keff`.
-- **Point-kinetic limit (`run_n5.py g0`, then `g0-analyze`):** one LS6 job
-  per F7 frequency, 20 × 25 batches × 10⁴, nskip 5, cancellation 25 × 25 × 8
-  over the fuel box, `noise.keff` 1.00137 (vector form).
-  - Perturbation: absorption in the central thimble water (cell 3789,
-    r = 1.69 cm, full height) raised by 10 %.
-  - Response: the total fission rate, δF/F₀.
-  - Fit: one real δρ over all frequencies against G₀ (IFP β_eff,k, Λ_eff,
-    tallied λ_k), and against G₀ with the library's physical β_k.
-  - Local probe at 1 Hz (20 × 5000, 936 s on 16 threads): δF/F₀ = −0.0477 +
-    0.0062i ± 6.9 %. That is G₀(1 Hz) times δρ = −34.1 pcm, with an
-    imaginary remainder of 0.6 pcm: within about 1° of point kinetics. Each
-    batch ran 400–1300 noise fission generations of 1.5–7·10³ sites.
-- **Point-kinetic limit, original item:** the TRIGA noise response at low ω against
-  G₀(ω) with the IFP β_eff = 715 ± 7 pcm and Λ_eff = 47.36 ± 0.10 µs
-  (`results/kinetics/kinetics.json`), on LS6.
+
+## Point-kinetic limit (`run_n5.py g0`, `g0-analyze`; `n5_log_g0.md`)
+
+- **Setup.** One LS6 job per F7 frequency: 20 replicas × 25 batches × 10⁴,
+  nskip 5, cancellation mesh 25 × 25 × 8 over the fuel box, η = 1 up to
+  30 Hz and 3 at 100 Hz, `noise.keff` 1.00137 (vector form).
+  - Perturbation: absorption in the central thimble water raised by 10 %
+    (cell 3789, r = 1.69 cm, full height). Response: δF/F₀ of the total
+    fission rate.
+  - Fit: one real δρ over all 7 frequencies (14 real numbers), so the shape
+    in frequency and the phase are predictions.
+  - Cost: 112 node-hours, 39–61 min per replica (longest at 0.1 Hz).
+  - The local 1 Hz probe (20 × 5000) gave δρ = −34.1 pcm with an imaginary
+    remainder of 0.6 pcm; each batch ran 400–1300 noise fission generations.
+- **Result: the library's kinetics are the IFP β_eff, not the physical β.**
+
+  | G₀ with | δρ [pcm] | χ² / 13 | amplitude residual | phase residual |
+  |---|---|---|---|---|
+  | IFP β_eff,k (715 pcm), Λ_eff 47.36 µs | −32.64 ± 0.07 | 72 | −1.5 to +2.0 % | −0.8 to −0.2° |
+  | library physical β_k (646 pcm) | −30.22 ± 0.07 | 322 | −2.5 to +6.0 % | −0.3 to +2.0° |
+
+  Per frequency against IFP G₀ (σ about 0.6 % and 0.1–0.3°):
+
+  | f [Hz] | 0.1 | 0.3 | 1 | 3 | 10 | 30 | 100 |
+  |---|---|---|---|---|---|---|---|
+  | amplitude − 1 [%] | +0.3 | +1.4 | +2.0 | −0.4 | −1.1 | −1.5 | −1.4 |
+  | phase [°] | −0.27 | −0.40 | −0.25 | −0.18 | −0.58 | −0.82 | −0.21 |
+
+  - The physical-β curve misses by 6 % and 2° at 30–100 Hz, where G₀ is
+    set by β/Λ. So the multigroup transport, through the library's χ_d per
+    family, reproduces the delayed neutrons' extra importance
+    (β_eff/β = 1.107) to within a few per cent.
+- **The IFP residual is a 3–4 % tilt, not noise (χ² 72 / 13).**
+  Diagnostic fits, one parameter added:
+  - **β/Λ scale:** Λ × 1.028 ± 0.005, or equivalently β × 0.973 ± 0.004;
+    χ² 33 / 12. The multigroup β_eff/Λ would be 2.7 % below the CE IFP
+    value. The IFP β_eff itself is known only to ±1 %.
+  - **Reactivity offset ρ₀**, δF/F₀ = δρ / (1/G₀ − ρ₀): ρ₀ = +17 ± 2 pcm;
+    χ² 22 / 12, the best. That is the signature of `noise.keff` (1.00137 ±
+    0.00009) sitting about 17 pcm below this model's own k (1.9σ of the
+    forward k). At 1 Hz a 9 pcm k error moves the amplitude by about 1.5 %.
+  - Adding both does not help (Λ × 0.996 ± 0.010, χ² 22 / 11). A constant
+    complex space-dependent term does not either (χ² 59 / 11).
+  - The remaining scatter (+1.5 % at 1 Hz, −1.2 % at 10 Hz; χ² 22 / 12) is
+    at the 2σ level. The space-dependent share the design doc expects
+    above about 24 Hz (its paragraph on the point-kinetic plateau) is not resolved here.
+- **Verdict: N5's point-kinetic check passes.** The brief sets no numeric
+  tolerance. The multigroup response follows G₀ with the IFP β_eff and
+  Λ_eff to within 2 % and 0.8° from 0.1 to 100 Hz, and rejects the physical
+  β.
+- **For 9b.** `noise.keff` uncertainty (±9 pcm) is a 1–2 % effect on
+  absolute low-frequency amplitudes. 9b's gates (forward–adjoint
+  reciprocity, two mesh sizes, Σ|w|) compare runs that use the same
+  `noise.keff`, so it largely cancels there. If 9b's absolute responses
+  are to be quoted below 3 Hz, a dedicated vector-form k of this model to
+  about ±2 pcm should come first.

@@ -214,6 +214,33 @@ def g0_analyze(args):
                 f"{abs(m) / abs(p) - 1:+.4f} (sigma {sA / abs(p):.4f}), "
                 f"dphase {np.degrees(np.angle(m / p)):+.2f} deg (sigma "
                 f"{sph:.2f}); R {R}, T {T:.0f}s")
+    # diagnostics of the IFP residual: a beta/Lambda scale (degenerate: only
+    # their ratio is seen once drho is free) and a reactivity offset rho0,
+    # dF/F0 = drho / (1/G0 - rho0), the signature of noise.keff differing
+    # from the model's own k
+    from scipy.optimize import least_squares
+    diag = {
+        "drho, Lambda scale": (
+            lambda p: ref_g0.g0(w, BETA_EFF_K, LAMBDA_K, LAMBDA_EFF * p[1])
+            * p[0], [-3e-4, 1.0]),
+        "drho, rho0": (
+            lambda p: p[0] / (1 / ref_g0.g0(w, BETA_EFF_K, LAMBDA_K,
+                                            LAMBDA_EFF) - p[1]),
+            [-3e-4, 0.0]),
+    }
+    log("\n  diagnostic fits (IFP beta_eff):")
+    for name, (fn, p0) in diag.items():
+        fit = least_squares(lambda p: np.concatenate(
+            [(fn(p).real - r.real) / sre, (fn(p).imag - r.imag) / sim]),
+            p0, x_scale="jac")
+        sig = np.sqrt(np.diag(np.linalg.inv(fit.jac.T @ fit.jac)))
+        q = r / fn(fit.x)
+        log(f"    {name}: p = " + ", ".join(
+            f"{v:.5g} +- {e:.2g}" for v, e in zip(fit.x, sig))
+            + f"; chi2 {2 * fit.cost:.1f} / {2 * len(r) - len(p0)}")
+        log("      amp ratio - 1 [%]: " + " ".join(
+            f"{100 * (abs(x) - 1):+.1f}" for x in q) + "; dphase [deg]: "
+            + " ".join(f"{np.degrees(np.angle(x)):+.2f}" for x in q))
     log("\n  collision-scheme cut-offs (ref_g0.cutoffs, IFP values):")
     for eta in (1.0, 3.0):
         log(f"    eta {eta:g}: " + str(ref_g0.cutoffs(

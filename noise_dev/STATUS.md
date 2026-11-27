@@ -16,16 +16,18 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c (weight windows) moved to 9b prep | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
-| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 in progress: library audited and transposed (k∞ forward = transposed to 2.3e-5, vector = matrix per material); full-core transposed k = forward (vector −33 ± 17 pcm, matrix 0 ± 19 pcm, flat weight window); the G₀ check pending | `prep9b/n3c_gate.md`, `prep9b/n5_log.md` |
+| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). **N5 done**: library audited and transposed (k∞ forward = transposed to 2.3e-5, vector = matrix per material); full-core transposed k = forward (vector −33 ± 17 pcm, matrix 0 ± 19 pcm, flat weight window); low-ω response follows G₀ with the IFP β_eff to within 2 % and 0.8° over 0.1–100 Hz and rejects the physical β (6 %, 2°) | `prep9b/n3c_gate.md`, `prep9b/n5_log.md` |
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
-| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: waiting for the N5 library | `stage9/stage9a_gate.md` |
+| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: next (N5 done) | `stage9/stage9a_gate.md` |
 
 ## Next
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- N5 (`prep9b/n5_log.md`): the low-ω response against G₀ (IFP β_eff,
-  Λ_eff; `run_n5.py g0`, 7 LS6 jobs). Then Stage 9b.
+- Stage 9b, TRIGA dry run, with the N5 library (vector form,
+  `noise.keff` 1.00137). Optional first: a vector-form k of the model to
+  about ±2 pcm, if absolute amplitudes below 3 Hz are to be quoted (the
+  G₀ fit prefers a k about 17 ± 2 pcm higher; `prep9b/n5_log.md`).
 
 ## Open items and known limitations
 
@@ -43,9 +45,11 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 - **N5, shared TRIGA library.** Regenerate the CASMO-70 library once in
   ce_mg_triga (`step1d_mgxs.py`) with inverse velocity, delayed
   nu-fission and χ_d per family, β and tallied λ_k. Both projects then use
-  it, transposed by N1 + N2. When it arrives:
-  - check forward and transposed MG k against CE;
-  - check the low-ω response against G₀ with the IFP β_eff and Λ_eff.
+  it, transposed by N1 + N2. Done 2026-11-26 (`prep9b/n5_log.md`).
+  Remaining: the IFP G₀ fit leaves a 3–4 % amplitude tilt across 0.1–100
+  Hz (χ² 72 / 13). It is best explained by a 17 ± 2 pcm offset between
+  `noise.keff` and the model's k (χ² 22 / 12), or less well by β_eff/Λ
+  2.7 % lower in multigroup.
 
 - **MPI.** The local build has no MPI.
   - Stage 1d's 1-vs-4-rank check has not been run.
@@ -96,6 +100,11 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-26: **N5 done.** G₀ check (7 LS6 jobs, 112 node-hours): one
+  real δρ = −32.64 ± 0.07 pcm fits δF/F₀ at all 7 frequencies with the
+  IFP β_eff to within 2 % and 0.8° (χ² 72 / 13); the physical β misses by
+  up to 6 % and 2° (χ² 322 / 13). `run_n5.py g0-analyze` gains diagnostic
+  fits (β/Λ scale, reactivity offset).
 - 2026-11-26: N5 transposed full-core k matches forward in both forms
   (vector 1.00104 ± 0.00015 against 1.00137, −1.9σ; matrix 1.00152 ±
   0.00017 against 1.00152), with a flat weight window (without one the
