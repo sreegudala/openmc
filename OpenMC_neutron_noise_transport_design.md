@@ -932,6 +932,42 @@ $$\delta d(\omega)=R^\mathsf T\delta\phi(\omega)=R^\mathsf T\mathcal L(\omega)^{
       - The evaluation thresholds (σ < tol/3), the z tests, STD-C's integral and Hotelling tests, and every other criterion are unchanged.
     - **Cost.** In the least precise evaluated entries, the limit rises from the tolerance to at most twice the tolerance (tol + 3 · tol/3). Where σ ≪ tol it is essentially the tolerance.
     - **Not retroactive.** Stages already gated keep their verdicts. 9a stays at 12/15 with disposition; its log also shows the 3σ rule (all 14 group checks pass).
+  - *Amendment (2026-11-26c, Stage 9b): configuration and operational gate.*
+    - **Model.** ce_mg_triga's zoned model (`model_zoned`) with the N5 CASMO-70 library, vector fission form, and `noise.keff` 1.00137 (N5). The adjoint runs use the N1 + N2 transposed library of the same form.
+    - **Absorber.** N5's: absorption of the central thimble water raised by $\varepsilon$, so $\delta\Sigma_t=\delta\Sigma_a=\varepsilon\Sigma_a$. The cell is 3789, $r=1.689$ cm, $z=-80$ to 80 cm.
+      - **Varying strength.** The first-order game is linear in $\varepsilon$. Source weights scale with it, and the roulette and cancellation thresholds scale with the source weight. One seed at $\varepsilon=0.01$, 0.1 and 1 gives responses in the ratio of $\varepsilon$ to 2e-13 (`stage9/stage9b_log_linearity.md`). So the strength scales every result exactly, and the gated runs use $\varepsilon=0.1$, the N5 case with known $\delta\rho=-32.6$ pcm.
+    - **Detectors.** The ce_mg_triga pool detectors (`zones.json`), with a $1/v$ response $R_g=v_0(1/v)_g$, $v_0=2.2\times10^5$ cm/s, from each detector's own water.
+      - **Forward:** all twelve, det0–5 and arc0–5, at $r=55.8$ to 80.8 cm.
+      - **Adjoint, one run per detector:** arc0, arc3 and arc5. These are the nearest, the farthest not affected by the tank wall, and one affected by it. The arcs have 620–900 cm³ of scoring volume.
+      - **Adjoint source:** uniform in the arc, groups with probability $\propto R_g$, strength $S=V\sum_gR_g$, as in ce_mg_triga's adjoint convention.
+    - **Frequencies.** F7, with $\eta=1$ up to 30 Hz and 3 at 100 Hz. The IFP cut-offs (N5 log) are $\omega_{CC}=365$ rad/s at $\eta=1$ and 930 rad/s at $\eta=3$.
+    - **Exact adjoint tally.** The reciprocity partner of the forward $\delta d$ is $\langle\chi,\delta S\rangle$ with $\delta S=-\delta\Sigma_a\phi_0$ in the central cell.
+      - It is evaluated per group, so the spectrum is exact, with `pt_lib.pt_terms` (P0 + P1, as 7c) on 1 cm axial voxels of the cell.
+      - Logged: the P1 share, and the change when 2 cm and 4 cm voxels are used.
+      - Forward replica $r$, which supplies the static moments, is paired with adjoint replica $r$. The test is `harness.paired_correlated`, as in 7c.
+    - **Windows (N3c) and adjoint cancellation.** The pilot (`stage9/stage9b_log_pilot.md`) changed this item.
+      - **Adjoint, CADIS:** lower bounds $C/\phi(\mathbf r,G)$ on a 5 cm mesh over the model × CASMO-8 groups, upper/lower ratio 5.
+      - **Importance $\phi$:** ce_mg_triga's random-ray forward flux (`results/step3/forward_flux.npz`, fission-free, from the core's CE source strengths), read in place. It covers the pool, where a forward Monte Carlo map is unscored. A fission-free map differs from the importance inside the core, which costs efficiency, not bias.
+      - **Normalisation:** $C$ puts an $R$-weighted source particle at its window centre. Cells with $\phi=0$ get their group's largest lower bound. A mesh cell without a valid window gets neither windows nor the noise roulette (`collision_mg`), so a particle there would stop only by leaking.
+      - **Adjoint cancellation:** mesh A, as the forward runs. In the infinite-medium tests of the pilot, the transposed library's adjoint was unbiased only with energy-resolved importance windows. Without windows, or with flat ones, it was heavy-tailed, and its phase was wrong by up to 30×. Cancellation stabilised it further, and CASMO-8 importance was enough.
+      - **Forward runs** use no windows; they use cancellation, as 9a did.
+    - **Cancellation meshes.**
+      - **A, aligned with the fuel:** x edges between the hexagonal lattice's element columns (3.77 cm) and y edges at the element centres (2.18 cm), so each cell holds one half element. The z edges are at the fuel-segment boundaries of both element types. This gives 13 × 24 × 11 cells.
+      - **B:** A with every interval halved, 26 × 48 × 22 cells.
+      - Both meshes distinguish the outgoing group.
+    - **Gate, per frequency.**
+      1. **Reciprocity:** `paired_correlated` on (arc0, arc3, arc5), comparing forward $\delta d$ (mesh A) with the contraction.
+      2. **$\sum|w|$ bounded:** every run completes without the growth guard or the generation cap firing. That covers forward A, forward B and each adjoint. In addition, the generation ratio of the replica-summed $\sum|w|$, fitted over the generations every batch reaches (`stage3.gen_ratio`), is below 1.
+      3. **Two meshes:** `paired_correlated` between A and B on the twelve detectors' $\delta d$ (per static source particle) and $\delta F/F_0$. The two runs share seeds, so their static phases are identical and the test is paired. $\delta d$ is used rather than $\delta d/d_0$ because the static $d_0$ at the far detectors is barely sampled: zero in some replicas of the smoke test.
+
+      This gives 49 checks: 7 reciprocity, 7 mesh and 35 $\sum|w|$. None applies a per-entry STD tolerance, so the 3σ rule of 2026-11-26b does not enter.
+    - **Logged, not gated.**
+      - $\delta d/d_0$ (ratio of replica means) at every detector and $\delta F/F_0$ against $G_0\,\delta\rho_\text{N5}$. On the plateau (1–10 Hz) the design expects agreement within about 10 %.
+      - The static $k$ of every static generation, which is this model's own $k$, against `noise.keff`. The N5 $G_0$ fit suggested an offset of 17 ± 2 pcm.
+      - FOM of adjoint against forward per detector, and generations per batch.
+      - $G(\omega)$ maps: the adjoint flux on the window mesh, replica mean and σ.
+      - Cost per frequency, and the memory high-water mark (`sacct` MaxRSS).
+    - **Statistics.** 20 replicas per run. Particle counts are fixed by a pilot at 1 Hz (forward mesh A, adjoint for each detector, each 20 × 25 × 10⁴) and recorded before the gate runs. As in Stage 8, the gate runs are sized from the measured σ.
 
 **Log and plot.** Bode plots of $\delta d/d_0$ per detector, forward and adjoint; $G(\omega)$ maps; cost per frequency; memory high-water mark.
 

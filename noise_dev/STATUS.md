@@ -18,16 +18,17 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). **N5 done**: library audited and transposed (k∞ forward = transposed to 2.3e-5, vector = matrix per material); full-core transposed k = forward (vector −33 ± 17 pcm, matrix 0 ± 19 pcm, flat weight window); low-ω response follows G₀ with the IFP β_eff to within 2 % and 0.8° over 0.1–100 Hz and rejects the physical β (6 %, 2°) | `prep9b/n3c_gate.md`, `prep9b/n5_log.md` |
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
-| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: next (N5 done) | `stage9/stage9a_gate.md` |
+| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: designed (amendment 2026-11-26c), local pilot done; LS6 pilot at 1 Hz next | `stage9/stage9a_gate.md` |
 
 ## Next
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9b, TRIGA dry run, with the N5 library (vector form,
-  `noise.keff` 1.00137). Optional first: a vector-form k of the model to
-  about ±2 pcm, if absolute amplitudes below 3 Hz are to be quoted (the
-  G₀ fit prefers a k about 17 ± 2 pcm higher; `prep9b/n5_log.md`).
+- Stage 9b (`stage9/run_stage9b.py`, amendment 2026-11-26c): the LS6
+  pilot at 1 Hz (forward mesh A; adjoint arc0, arc3, arc5; 20 × 25 × 10⁴
+  each) measures σ and settles whether the adjoint's low Im in the local
+  pilot is small-sample skew; then size the 49-check gate runs. The LS6
+  build needs `odev_build` (commit 3d32d7862).
 
 ## Open items and known limitations
 
@@ -95,11 +96,26 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 2026-11-22b | 8 | Pin orientation resolved by symmetry (Abeille's used); gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, from tallies) as a second estimator; statistics sized from a measured forward σ |
 | 2026-11-23 | 8 | Vibration coefficient c_n derived; sampling rule (each side's own kernel and fission data, normalised by the collision material's Σt); `vibration` input |
 | 2026-11-26b | 9b on | Per-entry STD amplitude/phase tolerances must be exceeded at 3σ to fail (`std_criterion(..., significance=3)`); evaluation thresholds and all other tests unchanged; not retroactive (9a logged: 14/14 under it) |
+| 2026-11-26c | 9b | Configuration and gate: N5 library and absorber (ε = 0.1); 12 pool detectors forward, adjoints for arc0/arc3/arc5 (1/v response); contraction P0 + P1 on 1 cm voxels, paired with the forward; adjoint CADIS windows from ce_mg_triga's random-ray flux plus cancellation; meshes A (fuel-aligned) and B (halved); per frequency: reciprocity, Σ\|w\| bounded, A vs B paired; 49 checks; G₀ and static k logged |
 | 2026-11-26 | 9a | Reference uses FEMFFUSION's full noise operator (`-matrixfree_type_A full_allocated`): the default non_diagonal SP_N noise operator omits the cross-moment Marshak terms at vacuum boundaries (δφ/φ₀ fell to 0.75 at the vacuum edge in SP3, 0.60 in SP5, not in SP1) |
 | 2026-11-25 | 9a | Reference: FEMFFUSION `ref1_FE2` SP3 of examples/2D_C5G7_NN as shipped (UO2 kinetics on the perturbed MOX mix reproduced); relative noise per pin cell and group; outside the perturbed assembly, amplitude 5 % and phase 2° where OpenMC is precise enough, ≥ half the cells evaluated, both cancellation meshes (51, 102); OpenMC k from a separate eigenvalue run, σ_k ≤ 3 pcm |
 
 ## Log
 
+- 2026-11-26: Stage 9b designed (amendment 2026-11-26c) and piloted
+  locally (`stage9/stage9b_log_pilot.md`).
+  - Linearity in the absorber strength is exact (2e-13), so the strength is
+    a scale factor and the gated runs use ε = 0.1.
+  - **Solver bug fixed** (3d32d7862): noise-mode weight windows could
+    roulette a source particle at birth before its random-number stream was
+    set, which segfaulted on several threads. Regression test added.
+  - **The adjoint needs energy-resolved importance windows plus
+    cancellation.** Infinite-medium tests with a TRIGA fuel showed flat or
+    absent windows heavy-tailed, with the phase wrong by up to 30×. Windows
+    now come from ce_mg_triga's random-ray forward flux (CASMO-8), and the
+    adjoint runs use cancellation mesh A.
+  - The two-mesh gate uses δd: the static d₀ at the far detectors is barely
+    sampled.
 - 2026-11-26: **N5 done.** G₀ check (7 LS6 jobs, 112 node-hours): one
   real δρ = −32.64 ± 0.07 pcm fits δF/F₀ at all 7 frequencies with the
   IFP β_eff to within 2 % and 0.8° (χ² 72 / 13); the physical β misses by
