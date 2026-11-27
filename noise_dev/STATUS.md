@@ -18,17 +18,18 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
 | 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). **N5 done**: library audited and transposed (k∞ forward = transposed to 2.3e-5, vector = matrix per material); full-core transposed k = forward (vector −33 ± 17 pcm, matrix 0 ± 19 pcm, flat weight window); low-ω response follows G₀ with the IFP β_eff to within 2 % and 0.8° over 0.1–100 Hz and rejects the physical β (6 %, 2°) | `prep9b/n3c_gate.md`, `prep9b/n5_log.md` |
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
-| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: designed (amendment 2026-11-26c), local pilot done; LS6 pilot at 1 Hz next | `stage9/stage9a_gate.md` |
+| 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: designed (amendments 2026-11-26c, 2026-11-27); two LS6 pilot rounds at 1 Hz done (meshes A/B pass; arc0 contraction 4–5 % low at about 2σ); third round (transposed k like for like, arc0 at 400 batches) next | `stage9/stage9a_gate.md` |
 
 ## Next
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- Stage 9b (`stage9/run_stage9b.py`, amendment 2026-11-26c): second LS6
-  pilot round at 1 Hz (forward mesh B; adjoint arc0 with cancellation B;
-  arc0 and arc3 with 4× batches; arc5 rerun) to settle whether the 7–20 %
-  low contractions are skew, adjoint cancellation smoothing or a
-  systematic; then size the 49-check gate runs.
+- Stage 9b (`stage9/run_stage9b.py`, amendments 2026-11-26c and
+  2026-11-27): third LS6 pilot round at 1 Hz to tell heavy-tail skew from a
+  bias of the transposed game. It runs transposed and forward vector k
+  under the same settings (`prep9b/run_n5.py kadj`, seed 1001, 1600
+  active) and the arc0 adjoint at 400 batches. Then size the 49-check gate
+  runs.
 
 ## Open items and known limitations
 
@@ -96,12 +97,26 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 2026-11-22b | 8 | Pin orientation resolved by symmetry (Abeille's used); gate adds the adjoint contraction ⟨χ, δS⟩ (P0 + P1, from tallies) as a second estimator; statistics sized from a measured forward σ |
 | 2026-11-23 | 8 | Vibration coefficient c_n derived; sampling rule (each side's own kernel and fission data, normalised by the collision material's Σt); `vibration` input |
 | 2026-11-26b | 9b on | Per-entry STD amplitude/phase tolerances must be exceeded at 3σ to fail (`std_criterion(..., significance=3)`); evaluation thresholds and all other tests unchanged; not retroactive (9a logged: 14/14 under it) |
+| 2026-11-27 | 9b | Σ\|w\| generation ratio fitted over the generations ≥ 10 % of the batches reach (was: every batch); ended chains add zero, so the sum is unbiased; far adjoints (arc3, arc5) had no generations under the old window; threshold unchanged |
 | 2026-11-26c | 9b | Configuration and gate: N5 library and absorber (ε = 0.1); 12 pool detectors forward, adjoints for arc0/arc3/arc5 (1/v response); contraction P0 + P1 on 1 cm voxels, paired with the forward; adjoint CADIS windows from ce_mg_triga's random-ray flux plus cancellation; meshes A (fuel-aligned) and B (halved); per frequency: reciprocity, Σ\|w\| bounded, A vs B paired; 49 checks; G₀ and static k logged |
 | 2026-11-26 | 9a | Reference uses FEMFFUSION's full noise operator (`-matrixfree_type_A full_allocated`): the default non_diagonal SP_N noise operator omits the cross-moment Marshak terms at vacuum boundaries (δφ/φ₀ fell to 0.75 at the vacuum edge in SP3, 0.60 in SP5, not in SP1) |
 | 2026-11-25 | 9a | Reference: FEMFFUSION `ref1_FE2` SP3 of examples/2D_C5G7_NN as shipped (UO2 kinetics on the perturbed MOX mix reproduced); relative noise per pin cell and group; outside the perturbed assembly, amplitude 5 % and phase 2° where OpenMC is precise enough, ≥ half the cells evaluated, both cancellation meshes (51, 102); OpenMC k from a separate eigenvalue run, σ_k ≤ 3 pcm |
 
 ## Log
 
+- 2026-11-27: Stage 9b LS6 pilot, second round at 1 Hz
+  (`stage9/stage9b_log_pilot.md`).
+  - Forward mesh A against B passes (max |t| 1.35, Hotelling p 0.85).
+  - arc0's contraction is low by 0.4–6.6 % in three runs; pooled, 4–5 % at
+    t 2.1–2.4. arc3 pooled is 7 % low at t 1.3; arc5 −11 ± 21 %.
+  - Ruled out: cancellation smoothing (B against A, t −1.3) and the
+    cell-average product (rings change it by −0.18 %).
+  - Two candidates remain. 4× the batches cut σ by only 1.3–1.6×, a heavy
+    tail that overstates the t-values. Alternatively, N5's transposed k
+    −33 ± 17 pcm predicts 4.7 % low at 1 Hz.
+  - The Σ|w| fit found no generations for the far adjoints; amendment
+    2026-11-27 fits generations ≥ 10 % of the batches reach. All runs are
+    below 1.
 - 2026-11-27: Stage 9b LS6 pilot at 1 Hz (`stage9/stage9b_log_pilot.md`).
   - Forward δd at 1–4 % on all 12 detectors.
   - The adjoint phase now matches: Im/Re −0.118 against −0.121.

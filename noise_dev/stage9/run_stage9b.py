@@ -26,6 +26,8 @@ Modes:
              -> stage9b_adj_{det}_{ww}_{f}Hz.npz: adjoint moments A in the
              central cell, per-generation sum|w|, and the transfer map
              G(omega) (adjoint flux on the window mesh, mean and sigma)
+             --radial N adds the central cell on N equal-area rings (ptr;
+             the check of the cell-average product); --tag suffixes outputs
   linearity  one replica at EPS 0.01, 0.1 and 1 with one seed (local check)
   analyze    the gates and logged checks -> stage9b_log.md
 
@@ -69,6 +71,7 @@ NZ = 160                            # 1 cm axial voxels in the central cell
 WW_STEP = 5.0                       # cm, window mesh
 WW_RATIO = 5.0
 ADJ_SEED_OFFSET = 100000
+SUMW_MIN_FRAC = 0.1                 # sum|w| fit: batches reaching a generation
 DRHO_N5 = -32.64e-5                 # prep9b/n5_log.md, IFP fit, EPS = 0.1
 LOG = []
 
@@ -201,8 +204,24 @@ def pt_tally(cells, edges, phase):
     return t
 
 
+def ring_tally(cells, edges, phase, nr):
+    """As pt_tally, on nr equal-area rings of the central cell (the check of
+    the cell-average product in the contraction)."""
+    r = CENTRAL_R * np.sqrt(np.arange(nr + 1) / nr)
+    m = openmc.CylindricalMesh(r_grid=r, z_grid=np.linspace(*CENTRAL_Z,
+                                                            NZ + 1))
+    t = openmc.Tally(name="ptr")
+    t.filters = ([openmc.CellFilter(cells), openmc.MeshFilter(m),
+                  openmc.EnergyFilter(edges),
+                  openmc.SphericalHarmonicsFilter(1)]
+                 + ([openmc.NoisePhaseFilter()] if phase else [])
+                 + [openmc.ComplexPartFilter()])
+    t.scores = ["flux"]
+    return t
+
+
 def forward_model(f, kind, particles, batches, nskip, static_inactive,
-                  wwmap=False, eps=EPS):
+                  wwmap=False, eps=EPS, radial=0):
     lib = vector_library()
     model = base_model(lib, particles, batches)
     cells = model.geometry.get_all_cells()
@@ -227,6 +246,8 @@ def forward_model(f, kind, particles, batches, nskip, static_inactive,
     t_fis.filters = [openmc.NoisePhaseFilter(), openmc.ComplexPartFilter()]
     t_fis.scores = ["fission"]
     tallies = [t_det, t_fis, pt_tally([cell], edges, True)]
+    if radial:
+        tallies.append(ring_tally([cell], edges, True, radial))
     if wwmap:
         t = openmc.Tally(name="wwmap")
         t.filters = [openmc.MeshFilter(window_mesh(model)),
@@ -254,7 +275,7 @@ def arc_source(det, edges, R):
 
 
 def adjoint_model(f, det, particles, batches, ww="cadis", cancel="A",
-                  growth_limit=1.0e6):
+                  growth_limit=1.0e6, radial=0):
     work = HERE / "work_stage9b_lib"
     work.mkdir(exist_ok=True)
     lib = n5.adjoint_library("vector", work)
@@ -303,7 +324,10 @@ def adjoint_model(f, det, particles, batches, ww="cadis", cancel="A",
                     openmc.EnergyFilter(ww_energy()),
                     openmc.ComplexPartFilter()]
     gmap.scores = ["flux"]
-    model.tallies = openmc.Tallies([pt_tally([cell], edges, False), gmap])
+    tallies = [pt_tally([cell], edges, False), gmap]
+    if radial:
+        tallies.append(ring_tally([cell], edges, False, radial))
+    model.tallies = openmc.Tallies(tallies)
     return model
 
 
@@ -327,12 +351,14 @@ def pad_stack(arrs):
 
 def run_forward(args):
     f, kind = args.freq, args.mesh
-    work = HERE / f"work_stage9b_fwd_{kind}_{f:g}Hz"
+    work = HERE / f"work_stage9b_fwd_{kind}{args.tag}_{f:g}Hz"
     work.mkdir(exist_ok=True)
-    names = ("det", "fission", "pt") + (("wwmap",) if args.wwmap else ())
+    names = (("det", "fission", "pt") + (("wwmap",) if args.wwmap else ())
+             + (("ptr",) if args.radial else ()))
     out = run_replicas(
         lambda: forward_model(f, kind, args.particles, args.batches,
-                              args.nskip, args.static_inactive, args.wwmap),
+                              args.nskip, args.static_inactive, args.wwmap,
+                              radial=args.radial),
         work / "reps", n_rep=args.reps, tally_names=names,
         base_seed=args.base_seed, extra=read_noise)
     R = args.reps
@@ -352,7 +378,10 @@ def run_forward(args):
     if args.wwmap:
         res["wwmap"] = v["wwmap"].reshape(R, -1, ww_energy().size - 1,
                                           2)[..., 0].real
-    path = HERE / f"stage9b_fwd_{kind}_{f:g}Hz.npz"
+    if args.radial:                 # mesh bins: r fastest, then z
+        res["ptr"] = v["ptr"].reshape(R, NZ, args.radial, G, 4,
+                                      2)[..., 0].real
+    path = HERE / f"stage9b_fwd_{kind}{args.tag}_{f:g}Hz.npz"
     np.savez(path, **res)
     r = res["fission"][:, 1] / res["fission"][:, 0].real
     log(f"forward {kind} {f:g} Hz: dF/F0 {r.mean():.4e}, T "
@@ -455,21 +484,24 @@ def run_adjoint(args):
     tag = (f"{det['name']}_{args.ww}"
            + ("" if args.adj_cancel == "A" else f"_c{args.adj_cancel}")
            + ("" if args.base_seed == 1 else f"_s{args.base_seed}")
-           + f"_{f:g}Hz")
+           + f"{args.tag}_{f:g}Hz")
     work = HERE / f"work_stage9b_adj_{tag}"
     work.mkdir(exist_ok=True)
     out = run_replicas(
         lambda: adjoint_model(f, det, args.adj_particles, args.adj_batches,
                               args.ww, args.adj_cancel,
-                              args.growth_limit),
-        work / "reps", n_rep=args.reps, tally_names=("pt", "gmap"),
+                              args.growth_limit, args.radial),
+        work / "reps", n_rep=args.reps,
+        tally_names=("pt", "gmap") + (("ptr",) if args.radial else ()),
         base_seed=args.base_seed + ADJ_SEED_OFFSET, extra=read_noise)
     R = args.reps
     G = library_data()[0].size - 1
     ex = out["extras"]
     gm = out["values"]["gmap"].reshape(R, -1, ww_energy().size - 1)
     path = HERE / f"stage9b_adj_{tag}.npz"
-    np.savez(path, pt=out["values"]["pt"].reshape(R, NZ, G, 4),
+    extra = ({"ptr": out["values"]["ptr"].reshape(R, NZ, args.radial, G, 4)}
+             if args.radial else {})
+    np.savez(path, **extra, pt=out["values"]["pt"].reshape(R, NZ, G, 4),
              gmap_mean=gm.mean(0), gmap_sre=gm.real.std(0, ddof=1) / R**0.5,
              gmap_sim=gm.imag.std(0, ddof=1) / R**0.5,
              times=out["times"], frequency=f,
@@ -521,6 +553,20 @@ def contraction(F, A, S, dSt, nmerge=1):
     return P                                    # (R, 2): P0, P1
 
 
+def ring_contraction(Fr, Ar, S, dSt):
+    """Contraction on equal-area rings x axial voxels, and the same data
+    summed over the rings (the cell-average product of the gate). Fr, Ar:
+    (R, NZ, NR, G, 4), library group order."""
+    R, nz, nr = Fr.shape[:3]
+    flat = lambda X: X.reshape(R, nz * nr, *X.shape[3:])
+    w = np.full(nz * nr, nr / voxel_volume())
+    P = np.array([pt_terms_complex(flat(Fr)[r], S * flat(Ar)[r], w, dSt,
+                                   np.zeros((dSt.size, dSt.size)),
+                                   np.zeros((dSt.size, dSt.size)))
+                  for r in range(R)]).sum(1)
+    return P, contraction(Fr.sum(2), Ar.sum(2), S, dSt).sum(1)
+
+
 def rel_sigma(x):
     """Relative standard error of a complex replica mean."""
     return (np.hypot(x.real.std(ddof=1), x.imag.std(ddof=1))
@@ -533,7 +579,14 @@ def sumw_check(d, label):
     ok_len = S.size > 0
     with np.errstate(invalid="ignore", divide="ignore"):
         Sm = np.where(nb > 0, S / np.maximum(nb, 1), 0)
-    ratio, npts = gen_ratio(S, nb) if ok_len else (np.nan, 0)
+    # Fit over the generations that at least SUMW_MIN_FRAC of the batches
+    # reach. A batch whose chain has ended adds zero, so the replica sum is
+    # unbiased for E[sum|w|_g] until the generation cap, which no run hits.
+    # Requiring every batch (as stage 3) leaves no generations for a far
+    # adjoint, whose short chains end early (amendment 2026-11-27).
+    nbat = d["gens_per_batch"].size
+    ratio, npts = (gen_ratio(S, nb, min_batches=SUMW_MIN_FRAC * nbat)
+                   if ok_len else (np.nan, 0))
     peak = Sm.max() / Sm[0] if ok_len and Sm[0] > 0 else np.nan
     ok = bool(np.isfinite(ratio) and ratio < 1)
     log(f"    sum|w| {label}: generation ratio {ratio:.4f} ({npts} "
@@ -690,6 +743,10 @@ def main():
     p.add_argument("--adj-particles", type=int, default=10000)
     p.add_argument("--adj-batches", type=int, default=25)
     p.add_argument("--base-seed", type=int, default=1)
+    p.add_argument("--radial", type=int, default=0,
+                   help="also tally the central cell on this many "
+                   "equal-area rings (ptr)")
+    p.add_argument("--tag", default="", help="output name suffix")
     args = p.parse_args()
     {"forward": run_forward, "windows": run_windows, "adjoint": run_adjoint,
      "linearity": run_linearity, "analyze": analyze}[args.mode](args)

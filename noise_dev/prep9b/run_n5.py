@@ -275,10 +275,20 @@ def mg_model(library, particles, inactive, active, ww=(0.5, 2.0)):
     return model
 
 
+def kadj_tag(form, forward=False, seed=1):
+    """n5_kadj_{form}[_fwd][_s{seed}]: the N5 runs have no suffix."""
+    return (f"{form}" + ("_fwd" if forward else "")
+            + ("" if seed == 1 else f"_s{seed}"))
+
+
 def run_kadj(args):
-    work = HERE / f"work_n5_kadj_{args.form}"
+    tag = kadj_tag(args.form, args.kadj_forward, args.base_seed)
+    work = HERE / f"work_n5_kadj_{tag}"
     work.mkdir(exist_ok=True)
-    lib = adjoint_library(args.form, work)
+    # --kadj-forward: the forward library under the same settings (flat
+    # window, seeds), for a like-for-like difference (Stage 9b pilot)
+    lib = ((lib_dir() / LIBS[args.form]).resolve() if args.kadj_forward
+           else adjoint_library(args.form, work))
     make = lambda: mg_model(lib, args.particles, args.inactive, args.active)
 
     def extra(sp, d):
@@ -287,9 +297,10 @@ def run_kadj(args):
     out = run_replicas(make, work / "reps", n_rep=args.reps, tally_names=(),
                        base_seed=args.base_seed, extra=extra)
     k = np.array(out["extras"])
-    path = HERE / f"n5_kadj_{args.form}.npz"
+    path = HERE / f"n5_kadj_{tag}.npz"
     np.savez(path, k=k[:, 0], k_std=k[:, 1], times=out["times"])
-    log(f"transposed ({args.form}) k: {k[:, 0].mean():.5f} +- "
+    which = "forward" if args.kadj_forward else "transposed"
+    log(f"{which} ({args.form}) k: {k[:, 0].mean():.5f} +- "
         f"{k[:, 0].std(ddof=1) / np.sqrt(len(k)):.5f} ({len(k)} replicas, "
         f"T={out['times'].sum():.0f}s) -> {path.name}")
 
@@ -317,6 +328,24 @@ def analyze(args):
             f"{sf:.5f}: transposed - forward {diff:+.0f} +- {sd:.0f} pcm "
             f"({z:+.1f} sigma) -> {'consistent' if abs(z) < 3 else 'DIFFER'}"
             f"; against CE {(ka - K_CE[0]) * 1e5:+.0f} pcm")
+    # like-for-like reruns (Stage 9b pilot): transposed and forward
+    # libraries under the same settings, another seed
+    def stat(d):
+        R = d["k"].size
+        return d["k"].mean(), max(d["k"].std(ddof=1),
+                                  d["k_std"].mean()) / np.sqrt(R), R
+    for fp in sorted(HERE.glob("n5_kadj_*_fwd_s*.npz")):
+        form, seed = fp.stem.split("_")[2], fp.stem.split("_s")[-1]
+        ap = HERE / f"n5_kadj_{kadj_tag(form, False, int(seed))}.npz"
+        if not ap.exists():
+            log(f"  {form} seed {seed}: no {ap.name}")
+            continue
+        (ka, sa, Ra), (kf, sf, Rf) = stat(np.load(ap)), stat(np.load(fp))
+        diff, sd = (ka - kf) * 1e5, np.hypot(sa, sf) * 1e5
+        log(f"  {form}, seed {seed}, same settings: transposed {ka:.5f} +- "
+            f"{sa:.5f} ({Ra}), forward {kf:.5f} +- {sf:.5f} ({Rf}): "
+            f"transposed - forward {diff:+.0f} +- {sd:.0f} pcm "
+            f"({diff / sd:+.1f} sigma)")
     (HERE / "n5_log_kadj.md").write_text(
         "# N5 transposed k\n\n```\n" + "\n".join(LOG) + "\n```\n")
 
@@ -335,6 +364,8 @@ def main():
     p.add_argument("--particles", type=int, default=200000)
     p.add_argument("--inactive", type=int, default=100)
     p.add_argument("--active", type=int, default=400)
+    p.add_argument("--kadj-forward", action="store_true",
+                   help="kadj with the forward library (same settings)")
     args = p.parse_args()
     log(f"TRIGA_DIR {triga_dir()}, TRIGA_LIB_DIR {lib_dir()}")
     if args.mode == "kadj":

@@ -183,3 +183,99 @@ random-ray CADIS windows and cancellation mesh A.
   smoothing);
 - adjoint arc0 and arc3 with a new seed and 4× the batches (skew or bias);
 - adjoint arc5 rerun with the raised guard.
+
+## LS6 pilot, second round (1 Hz): results
+
+Same size as the first round (20 replicas × 25 batches × 10⁴) unless noted.
+
+**Forward, mesh B.** A against B passes: max |paired t| 1.35, integral
+−0.91 and +0.30, Hotelling p 0.85, pair correlation 0.16. B/A − 1 is
+−1.1 % at arc0 and −3.3 % to +5.8 % elsewhere, within each detector's σ.
+δF/F₀ is −0.04558 + 0.00524i (A: −0.04601 + 0.00528i). Wall time is 4 %
+above A's.
+
+**Contractions** against forward A at the same detector. "Low" is
+|forward/contraction| − 1, and t is the unpaired t of Re (positive when the
+contraction is low).
+
+| adjoint run | contraction | σ | low | phase | Im/Re (fwd −0.121) | t Re | FOM adj/fwd |
+|---|---|---|---|---|---|---|---|
+| arc0, seed 1 | −4.83e-4 + 5.71e-5i | 3.4 % | +6.6 % | −0.16° | −0.118 | +1.9 | 0.11 |
+| arc0, seed 1, cancellation B | −5.13e-4 + 5.71e-5i | 3.7 % | +0.4 % | −0.55° | −0.111 | +0.1 | 0.08 |
+| arc0, seed 2001, 100 batches | −4.96e-4 + 5.97e-5i | 2.1 % | +3.9 % | −0.03° | −0.120 | +1.7 | 0.07 |
+| arc3, seed 1 | −1.32e-5 + 1.45e-6i | 9.0 % | +20 % | −0.62° | −0.110 | +2.5 | 0.06 |
+| arc3, seed 2001, 100 batches | −1.66e-5 + 1.86e-6i | 7.0 % | −4.5 % | −0.52° | −0.112 | −0.7 | 0.02 |
+| arc5, seed 1 | −3.17e-6 + 2.10e-7i | 21 % | −11 % | −3.1° | −0.066 | −0.6 | 0.03 |
+
+- **Pooled** (inverse variance on Re):
+  - arc0, all three runs: low by 3.8 %, t 2.1.
+  - arc0, the two independent seeds only: low by 4.7 %, t 2.4.
+  - arc3: low by 7.0 %, t 1.3.
+- **Cancellation smoothing is not supported.** Cancellation B against A on
+  the same seeds gives +6.2 %, paired t −1.3. The replicas are uncorrelated
+  (r = 0.00), so the pairing gains nothing.
+- **The cell-average product is not the cause.** A local run
+  (4 replicas × 4 batches × 5000, forward and arc0 adjoint, `--radial 4`)
+  tallied the central cell on four equal-area rings.
+  - The rings change the contraction by −0.18 ± 0.03 %, with the wrong
+    sign.
+  - In the thermal groups the forward flux peaks at the centre (1.08 to
+    0.93 across the rings) and the adjoint at the edge (0.96 to 1.04). The
+    two shapes are anti-correlated.
+  - The ring tally summed over rings reproduces the cell tally to 4e-11.
+- **The 25-batch σ is probably underestimated.** 4× the batches cut σ by
+  1.6× at arc0 and 1.3× at arc3, against the √4 = 2× of a finite-variance
+  game. The FOM fell accordingly. The heavy tail of the transposed game
+  therefore shows at this size, and the t-values above overstate the
+  significance.
+- **A shared bias with the eigenvalue game would fit.** N5 found the
+  transposed vector library's k 33 ± 17 pcm below the forward. With
+  δF/F₀ = δρ/(1/G₀ − ρ₀) and 1/G₀ ≈ 0.0070 at 1 Hz, a 33 pcm lower k makes
+  the adjoint response 4.7 ± 2.4 % lower, as observed at arc0.
+  - The transposition is exact (4e-15), so a real k gap would be a bias of
+    the transposed Monte Carlo game. Both forms are written as prompt and
+    delayed matrices, so the eigenvalue and noise games sample the same
+    data.
+  - N5's comparison also mixed settings: the forward k is ce_mg_triga's,
+    without the flat window of the transposed runs.
+
+**Σ|w| check.** `stage3.gen_ratio` fits only the generations every batch
+reaches. For arc3 and arc5 it finds none, because a far adjoint's short
+chains end early (arc5: 357 of 500 batches reach generation 5). A batch
+whose chain has ended contributes zero to the replica sum, so the sum stays
+unbiased up to the generation cap (10⁵; the longest chain is 1620). The fit
+therefore now uses the generations at least 10 % of the batches reach
+(amendment 2026-11-27).
+
+| run | every batch (old) | ≥ 50 % | ≥ 10 % (new) | generations fitted at 10 % |
+|---|---|---|---|---|
+| forward A | 0.9931 | 0.9931 | 0.9930 ± 0.0001 | 966 |
+| forward B | 0.9932 | 0.9932 | 0.9932 ± 0.0002 | 973 |
+| arc0, seed 1 | 0.9932 | 0.9928 | 0.9927 ± 0.0004 | 534 |
+| arc0, cancellation B | 0.9932 | 0.9934 | 0.9937 ± 0.0003 | 577 |
+| arc0, seed 2001 | 0.9928 | 0.9931 | 0.9933 ± 0.0002 | 551 |
+| arc3, seed 1 | none | 0.9935 | 0.9915 ± 0.0007 | 182 |
+| arc3, seed 2001 | none | 0.9932 | 0.9939 ± 0.0005 | 201 |
+| arc5 | none | 0.9843 (5) | 0.9973 ± 0.0039 | 48 |
+
+The ± is a bootstrap over replicas. Every run is below 1.
+
+**Gate at 1 Hz on the pilot data** (`analyze`, first-round adjoints at
+seed 1): 7/7. Reciprocity passes with paired t −2.09, −2.54, +0.58 (Re
+arc0, arc3, arc5) and Hotelling p 0.07. The meshes pass (p 0.85), and the
+five Σ|w| checks pass. The gate passes while arc0 sits at 2σ, so the
+cause is settled before the gate runs shrink σ.
+
+## LS6 pilot, third round (1 Hz)
+
+The round separates the two remaining causes of arc0's low contraction:
+heavy-tail skew, or a bias of the transposed game.
+
+- **Transposed against forward k, like for like:** `run_n5.py kadj
+  --form vector`, transposed and `--kadj-forward`, both with the flat
+  window. Each run is 20 replicas × 2·10⁵ × (100 + 1600) with seed 1001,
+  giving σ about 10 pcm on the difference. A gap near 33 pcm would mean a
+  bias of the game, and none would leave skew.
+- **arc0 adjoint at 400 batches** (seed 3001). σ should fall to about
+  1.0 % if the variance is finite. The run shows whether the low mean
+  persists.
