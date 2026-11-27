@@ -16,7 +16,7 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 | 6 | Sampled noise source from $\delta\Sigma$ perturbations | **Passed**: 6a/6b 22/22, 6c 6/6 vs Abeille (global amplitude resolved to about ±5 %, shape to 0.3 %) | `stage6/stage6_gate.md` |
 | 7 prep | Brief N1–N3: copied TRIGA transposition, noise extension, audits | **Done**: N1/N2 unit tests pass; N3a/N3b 6/6, and N3b at 4× particles plus the N3f forward control 6/6 (job 3599802; adjoint FOM 4–11 % of forward on this material). N3c (weight windows) moved to 9b prep | `stage7/stage7_prep_log.md` |
 | 7 | Adjoint noise and reciprocity (amended 2026-11-20, 2026-11-20b) | **Passed** (30/30 after the 1 Hz rerun; 7c scattering checked against S_N, see gate) | `stage7/stage7_gate.md` |
-| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 in progress: library audited and transposed (k∞ forward = transposed to 2.3e-5, vector = matrix per material); full-core k and the G₀ check pending | `prep9b/n3c_gate.md`, `prep9b/n5_log.md` |
+| 9b prep | N3c: weight windows with complex weights; N5: shared TRIGA library (amendment 2026-11-22, runs before Stage 8) | **N3c passed** (unit tests; deep penetration 6/6, FOM ×240 and ×8600; infinite-medium adjoint 6/6, unbiased, no gain). N5 in progress: library audited and transposed (k∞ forward = transposed to 2.3e-5, vector = matrix per material); full-core transposed k = forward (vector −33 ± 17 pcm, matrix 0 ± 19 pcm, flat weight window); the G₀ check pending | `prep9b/n3c_gate.md`, `prep9b/n5_log.md` |
 | 8 | Vibrating component (amendments 2026-11-22b, 2026-11-23) | **Passed**: 8a 6/6, 8b 4/4, 8c 16/18 (the two n = 1 thermal misses against Abeille dispositioned as an error in the reference: the adjoint contraction agrees with OpenMC and is 7.6σ and 5.5σ from Abeille) | `stage8/stage8_gate.md` |
 | 9 | Many-group benchmark (C5G7) and TRIGA dry run | **9a passed** (12/15 with disposition: 3 single reflector cells at 3.6–3.8σ; relative noise within about 1 % and 0.1° of FEMFFUSION SP3, whose default noise operator had to be replaced by its full one). 9b: waiting for the N5 library | `stage9/stage9a_gate.md` |
 
@@ -24,9 +24,8 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 - Abeille n = 1 without cancellation (job 3612742, running): append its
   result to `stage8/stage8_gate.md`.
-- N5 (`prep9b/n5_log.md`): forward MG k from ce_mg_triga's check (its
-  vector-against-matrix k gap, commit 32ad772); transposed full-core k; the
-  low-ω response against G₀ (IFP β_eff, Λ_eff). Then Stage 9b.
+- N5 (`prep9b/n5_log.md`): the low-ω response against G₀ (IFP β_eff,
+  Λ_eff; `run_n5.py g0`, 7 LS6 jobs). Then Stage 9b.
 
 ## Open items and known limitations
 
@@ -97,6 +96,10 @@ Stage definitions and gates: design doc §5. Overview: [`README.md`](README.md).
 
 ## Log
 
+- 2026-11-26: N5 transposed full-core k matches forward in both forms
+  (vector 1.00104 ± 0.00015 against 1.00137, −1.9σ; matrix 1.00152 ±
+  0.00017 against 1.00152), with a flat weight window (without one the
+  transposed run is unusable: 0.586 ± 0.082). Audit log regenerated on LS6.
 - 2026-11-26: N5 library arrived (ce_mg_triga 32ad772; local copies in
   ~/dev/triga_lib, outside the repo). Audit: 70 groups, 6 families, all
   kinetics data present; flags: empty Air/Aluminum scatter groups

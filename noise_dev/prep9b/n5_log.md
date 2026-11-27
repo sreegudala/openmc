@@ -83,8 +83,23 @@ seeds, 100k × (100 + 200) per seed.
   moment is unbounded (multiplicity up to 3.08).
 - **A flat weight window fixes it.** One mesh cell, bounds 0.5–2.0, gives
   1.014 ± 0.012, consistent with the forward k.
-- **LS6 runs.** 20 replicas × 2·10⁵ × (100 + 400) per form, against the
-  forward k of the same form.
+- **LS6 runs** (`n5_log_kadj.md`): 20 replicas × 2·10⁵ × (100 + 400) per
+  form with the flat window, against the forward k of the same form.
+
+  | form | transposed | forward | transposed − forward |
+  |---|---|---|---|
+  | vector | 1.00104 ± 0.00015 | 1.00137 ± 0.00009 | −33 ± 17 pcm (−1.9σ) |
+  | matrix | 1.00152 ± 0.00017 | 1.00152 ± 0.00009 | 0 ± 19 pcm |
+
+  - Both are consistent within 2σ. The replica spread (57 and 75 pcm)
+    matches the within-run σ (67 and 66 pcm), so the window leaves no hidden
+    variance.
+  - Transposed vector − matrix is −48 ± 23 pcm (−2.1σ), against the forward
+    −16 ± 13 pcm. The two transposed libraries differ only in how the
+    vector form's χ is folded into the matrix (k∞ per material within
+    1.7e-5), so this is taken as a fluctuation. It does not affect 9b, which
+    uses one form throughout: the vector form, whose forward k is
+    `noise.keff`.
 - **Point-kinetic limit (`run_n5.py g0`, then `g0-analyze`):** one LS6 job
   per F7 frequency, 20 × 25 batches × 10⁴, nskip 5, cancellation 25 × 25 × 8
   over the fuel box, `noise.keff` 1.00137 (vector form).
